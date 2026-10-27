@@ -1,0 +1,15 @@
+# Only the public landing page should be indexed; the workspace is private.
+User-agent: *
+Allow: /$
+Disallow: /admin
+Disallow: /mentor
+Disallow: /workspace
+Disallow: /projects
+Disallow: /tasks
+Disallow: /teams
+Disallow: /reviews
+Disallow: /meetings
+Disallow: /notifications
+Disallow: /performance
+Disallow: /activate
+Disallow: /api
