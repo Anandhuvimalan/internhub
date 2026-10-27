@@ -32,7 +32,7 @@ Close S0 gap findings (Book 7 gap assessment); add first automated tests; first 
 | Tests can fail (mutation) | **verified** 7/7 mutants caught | M1 teammate approve, M2 access bypass, M3 session version, M4 CSRF compare, M5 reusable activation, M6/M7 membership columns |
 | Concurrency overlap real? | **verified** review race overlaps 8/8 rounds (stopped by DB unique) | Allocation race never overlapped in-process → vacuous test removed, replaced by wiring + constraint tests |
 | Migration on populated DB | **verified** applied to seeded dev DB; `migrate diff` = no drift | |
-| HTTP E2E `npm run test:e2e` | **verified** 27/27 | `next build` standalone server, seeded DB, Redis |
+| HTTP E2E `npm run test:e2e` | **verified** 33/33 | `next build` standalone server, seeded DB, Redis |
 | Browser E2E `scripts/ui-e2e.py` | **verified** 40/40, 0 console errors | Chromium 153; 1280×860 and 390×844; 22 screens swept |
 | Contrast / screen reader audit | **not run** | Tokens chosen for contrast but not measured; needs axe/Lighthouse pass |
 | Load / capacity (NFR-1/2) | **not run** | Needs staging + k6 (S3) |

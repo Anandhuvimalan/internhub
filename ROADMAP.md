@@ -20,4 +20,4 @@ Submission → Review → Completion) and v3 §13's phases.
 ## Progress Log
 - 2026-10-27 M1 — MVP built and pushed (`4ca3b39`); build + typecheck only.
 - 2026-10-27 S0 — docs baseline (PRD, ARCHITECTURE, ADR-0001..0003, map, baselines, risks). See docs/features/S0-docs-baseline.md.
-- 2026-10-27 S1 — hardening, 65 tests (7/7 mutants caught), HTTP E2E 27/27, browser E2E 40/40. See docs/features/S1-hardening-and-verification.md.
+- 2026-10-27 S1 — hardening, 65 tests (7/7 mutants caught), HTTP E2E 33/33, browser E2E 40/40. See docs/features/S1-hardening-and-verification.md.

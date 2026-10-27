@@ -12,6 +12,21 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const PASSWORD = "internhub-demo";
 let failures = 0;
 
+/** The subset of API response fields this script inspects. */
+interface Body {
+  id?: string;
+  status?: string;
+  version?: number;
+  db?: string;
+  completedAt?: string | null;
+  error?: { code?: string; message?: string };
+  items?: { id: string }[];
+  team?: { id: string } | null;
+  myTasks?: unknown[];
+  [key: string]: unknown;
+}
+type Res = { status: number; json: Body | null; text: string; headers: Headers };
+
 class Client {
   cookie = "";
   constructor(public label: string) {}
@@ -33,7 +48,7 @@ class Client {
       if (m) this.cookie = m[1] ? `ih_session=${m[1]}` : "";
     }
     const text = await res.text();
-    let json: any = null;
+    let json: Body | null = null;
     try { json = JSON.parse(text); } catch { /* HTML or empty */ }
     return { status: res.status, json, text, headers: res.headers };
   }
@@ -44,11 +59,16 @@ class Client {
   }
 }
 
+function isRes(v: unknown): v is Res {
+  return !!v && typeof v === "object" && "json" in v && "status" in v;
+}
+
 function check(name: string, ok: boolean, detail?: unknown) {
   console.log(`${ok ? "✓" : "✗"} ${name}`);
   if (!ok) {
     failures++;
-    console.log("    ", JSON.stringify(detail && typeof detail === "object" && "json" in (detail as object) ? { status: (detail as any).status, body: (detail as any).json ?? (detail as any).text?.slice(0, 200) } : detail).slice(0, 400));
+    const shown = isRes(detail) ? { status: detail.status, body: detail.json ?? detail.text.slice(0, 200) } : detail;
+    console.log("    ", JSON.stringify(shown).slice(0, 400));
   }
 }
 
@@ -74,7 +94,7 @@ async function main() {
 
   // ── Login protections ──
   const bad = await anon.req("POST", "/api/v1/auth/session", { email: "admin@internhub.dev", password: "wrong-password" });
-  check("wrong password → 401 generic message", bad.status === 401 && /incorrect/.test(bad.json?.error?.message), bad);
+  check("wrong password → 401 generic message", bad.status === 401 && /incorrect/.test(bad.json?.error?.message ?? ""), bad);
   const ghost = await anon.req("POST", "/api/v1/auth/session", { email: `ghost-${Date.now()}@x.dev`, password: "whatever" });
   check("unknown email → same 401 message (no enumeration)", ghost.status === 401 && ghost.json?.error?.message === bad.json?.error?.message, ghost);
   const victim = `ratelimit-${Date.now()}@x.dev`;
@@ -133,7 +153,7 @@ async function main() {
     check("unrelated user reading another team's task → 404", peek.status === 404, peek);
   }
   const list = await outsider.req("GET", "/api/v1/tasks?q=customer");
-  check("search never returns other teams' tasks", list.status === 200 && list.json.items.every((t: any) => t.id !== alphaTask), list);
+  check("search never returns other teams' tasks", list.status === 200 && (list.json?.items ?? []).every((t) => t.id !== alphaTask), list);
 
   // ── Meetings: request → approve ──
   const teamId = dash.json?.team?.id;
