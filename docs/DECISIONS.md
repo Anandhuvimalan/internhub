@@ -28,3 +28,5 @@ Small decisions, too minor for an ADR. Dated, one or two lines, with the reason.
 - Time-derived values (`pastSla`, `internshipWeek`) computed in the data layer, never during render.
   Reason: React purity lint; keeps render deterministic.
 - Activation tokens: SHA-256 at rest, 7-day expiry, single use; outbox payload redacted after send.
+- CI typecheck needs `next typegen` first (route types live in git-ignored `.next/`); `npm run typecheck` now does both.
+  Reason: passed locally, failed on clean CI checkout (S2 first run).
