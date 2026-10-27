@@ -7,3 +7,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Project workflow
+
+This project follows the build-web-app skill (https://github.com/Anandhuvimalan/build-web-app).
+Start every session with `NEXT_SESSION.md`, then read only the documents it lists.
+Record decisions in `docs/DECISIONS.md` / `docs/adr/`, risks in `docs/RISKS.md`, and mark
+unrun checks as **not run** — never as passing.
