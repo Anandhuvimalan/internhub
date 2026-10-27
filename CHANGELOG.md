@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### S2 — Delivery (2026-10-27)
+- One-command setup with Docker Compose (database, cache, migrations, app, background worker).
+- Every push now runs lint, type checks, 65 tests, a production build, HTTP and browser
+  end-to-end checks, and a Docker build-and-boot check.
+- `npm start` now runs the production build correctly; new `/api/live` liveness endpoint.
+- README rewritten for setup, demo accounts, checks and deployment.
+
 ### S1 — Security hardening and verification (2026-10-27)
 - Signing out now ends the session everywhere; passwords use a memory-hard hash; login no
   longer reveals which emails are registered; activation links expire after 7 days and work once.

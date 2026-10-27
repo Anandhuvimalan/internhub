@@ -55,6 +55,13 @@ Index only — code wins on conflict. Update touched entries per slice; never re
 - `src/emails/templates.ts` — email HTML. [E]
 - `prisma/seed.ts` — demo data, truncates schema. [E]
 
+## Module: delivery
+- `Dockerfile` — targets `app` (standalone, non-root, HEALTHCHECK /api/live), `worker` (tsx), `migrate`. Build args APP_URL/S3_ENDPOINT/ALLOWED_ORIGINS. [E]
+- `docker-compose.yml` — postgres, redis, migrate→app/worker, `app-seed` (profile tools). [E]
+- `.github/workflows/ci.yml` — jobs checks → test (pg service) → e2e (npm start, HTTP+browser); docker (build, migrate, boot, probes). Actions SHA-pinned. [E]
+- `scripts/start.mjs` — `npm start`: copy static/public into standalone, run server.js. [E]
+- `src/app/api/live/route.ts` — liveness, no DB. `api/health` = readiness. [E]
+
 ## Module: tests
 - `vitest.config.ts` — aliases `server-only`→stub, `@`→src; env points at `internhub_test`; files sequential. [E]
 - `tests/global-setup.ts` — creates test DB (refuses non-`test` names), `prisma migrate deploy`. [E]

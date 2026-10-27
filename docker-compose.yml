@@ -1,0 +1,90 @@
+# Local / single-server stack: Postgres, Redis, one-off migration, app, worker.
+#
+#   cp .env.example .env        # set SESSION_SECRET (>= 32 chars) at minimum
+#   docker compose up --build
+#   docker compose run --rm app-seed        # optional demo data (password: internhub-demo)
+#
+# Production: use managed Postgres/Redis and real secrets; run `migrate` before each app
+# rollout; put Cloudflare/nginx in front and set TRUSTED_IP_HEADER accordingly.
+
+x-runtime-env: &runtime-env
+  DATABASE_URL: postgresql://internhub:internhub@postgres:5432/internhub?schema=internship
+  REDIS_URL: redis://redis:6379
+  SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env (at least 32 characters)}
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  TRUSTED_IP_HEADER: ${TRUSTED_IP_HEADER:-x-real-ip}
+  SMTP_URL: ${SMTP_URL:-}
+  EMAIL_FROM: ${EMAIL_FROM:-InternHub <no-reply@example.com>}
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_BUCKET: ${S3_BUCKET:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+  MUX_SIGNING_KEY_ID: ${MUX_SIGNING_KEY_ID:-}
+  MUX_SIGNING_PRIVATE_KEY: ${MUX_SIGNING_PRIVATE_KEY:-}
+
+x-build: &build
+  context: .
+  args:
+    APP_URL: ${APP_URL:-http://localhost:3000}
+    S3_ENDPOINT: ${S3_ENDPOINT:-}
+    ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_USER: internhub
+      POSTGRES_PASSWORD: internhub
+      POSTGRES_DB: internhub
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U internhub -d internhub"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    build: { <<: *build, target: migrate }
+    image: internhub-migrate:local
+    environment: *runtime-env
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  app:
+    build: { <<: *build, target: app }
+    image: internhub-app:local
+    environment: *runtime-env
+    ports: ["3000:3000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  worker:
+    build: { <<: *build, target: worker }
+    image: internhub-worker:local
+    environment: *runtime-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  # Optional demo data. Truncates the internship schema — never run against real data.
+  app-seed:
+    image: internhub-migrate:local
+    environment: *runtime-env
+    command: ["node_modules/.bin/tsx", "prisma/seed.ts"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    profiles: [tools]
+
+volumes:
+  pgdata:

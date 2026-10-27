@@ -4,31 +4,35 @@ Overwritten every slice. History: CHANGELOG.md, ROADMAP.md Progress Log.
 Workflow: build-web-app skill (github.com/Anandhuvimalan/build-web-app) — read its SKILL.md first.
 
 ## Cold-start reading order
-1. ROADMAP.md (slice table)
-2. docs/features/S1-hardening-and-verification.md (evidence table; what is **not run**)
-3. ARCHITECTURE.md → "Planned in v3 but not built"
+1. ROADMAP.md (slice table + Progress Log — check last CI result recorded there)
+2. docs/RISKS.md (open items gate production)
+3. docs/features/S2-delivery.md, docs/features/S1-hardening-and-verification.md (evidence; **not run** rows)
 4. docs/PROJECT_MAP.md → open only files named for the slice
 
 ## Last completed slice
-S1 — hardening + 65 tests + HTTP/browser E2E. See docs/features/S1-hardening-and-verification.md.
+S2 — Docker, CI, README, `npm start` fix. See docs/features/S2-delivery.md.
 
 ## Next slice to implement
-S2 — delivery: Dockerfile (uses `output: "standalone"`), docker-compose (app, worker, postgres 16, redis), CI (lint, typecheck, test with Postgres service, build), README.
-- Standalone server needs `.next/static` + `public` copied beside `server.js`; worker runs via `tsx scripts/worker.ts` (needs Prisma client + `src/emails`).
-- Migrations: run `prisma migrate deploy` as a one-off before app start, not on every container boot.
+Choose with product owner (each needs input/infrastructure from them):
+- S4 Admin MFA (R-2) — needs decision TOTP vs IdP. Can start alone if TOTP chosen.
+- S3 Staging + k6 load test (R-1) — needs a staging host.
+- Accessibility audit (R-11) — can run now: axe-core via Playwright over the same screens as `scripts/ui-e2e.py`.
+- S5 Upload verification (R-7) — needs R2 credentials.
+If no input available, do the accessibility audit (fully local).
 
 ## How to verify locally
-- Services: Postgres 16 localhost:5432 (user postgres, trust), Redis 6379. Test DB `internhub_test` auto-created by `npm test`.
-- `npm run lint && npm run typecheck && npm test` · `npm run db:seed && npm run build` → start standalone → `npm run test:e2e` · `python3 scripts/ui-e2e.py` (reseed first; both E2E mutate data).
-- Stopping the standalone server: kill the `next-server` pid, not `pkill -f server.js` (matches the launching shell).
+- Services: Postgres 16 localhost:5432, Redis 6379. `npm test` auto-creates `internhub_test`.
+- `npm run lint && npm run typecheck && npm test`; `npm run db:seed && npm run build && npm start`; then `npm run test:e2e`; reseed + flush Redis; `python3 scripts/ui-e2e.py`.
+- Docker image builds cannot be verified in the Claude sandbox (egress blocks Debian mirrors); rely on CI `docker` job.
+- Never chain a check into `| tail` before `&&` — the exit code is lost (S1 lint slip). Check `$?` or let the command's own exit code gate.
 
 ## Standing decisions this session should not re-litigate
-- Modular monolith, `internship` schema (ADR-0001). Postgres outbox, not Redis queue (ADR-0002). In-app sessions now, IdP later (ADR-0003).
-- Cache Components on; user data in Suspense; API `connection()`. Page denials = 200 + 404 UI (streaming); APIs real statuses.
-- CSP no nonce (PPR incompatible). State transitions compare-and-set + unique constraints. Base `grid-cols-1` on responsive grids.
-- Logout revokes all sessions of the user.
+- ADR-0001 monolith/`internship` schema; ADR-0002 Postgres outbox; ADR-0003 in-app sessions (IdP later).
+- Cache Components on; page denials = 200 + 404 UI; APIs real statuses. CSP no nonce.
+- CAS state transitions + unique constraints. Logout revokes all sessions.
+- `/api/live` liveness, `/api/health` readiness. APP_URL/S3_ENDPOINT/ALLOWED_ORIGINS are build-time.
+- CI runs the same npm scripts as developers.
 
 ## Open questions / gaps flagged, not yet resolved
-- Product owner sign-off needed on proposed risk acceptances R-5, R-8, R-10 (docs/RISKS.md).
-- Admin MFA method (TOTP vs IdP) — R-2. Existing student platform DB/identity access — R-6.
-- Not run: accessibility audit (R-11), load test (R-1), real R2/Mux/SMTP providers.
+- Product owner sign-off on proposed risk acceptances R-5, R-8, R-10.
+- Admin MFA method (R-2); existing student-platform identity access (R-6); hosting target for staging/production.

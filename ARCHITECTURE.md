@@ -79,7 +79,7 @@ Worker (scripts/worker.ts) ──▶ PostgreSQL OutboxEvent (FOR UPDATE SKIP LOC
 
 ## Planned in v3 but not built (do not assume these exist)
 
-Cloudflare WAF/CDN configuration, second app instance + load balancer, PgBouncer/Supabase
+Cloudflare WAF/CDN configuration (the Docker image and CI exist since S2; hosting does not), second app instance + load balancer, PgBouncer/Supabase
 pooler settings, monitoring dashboards and alerts, k6 load tests, backup/restore drill,
 Supabase Realtime (the app currently has no websocket/realtime channel — pages refresh on
 navigation), video library UI, admin MFA, integration with the existing student platform.
