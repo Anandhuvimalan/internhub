@@ -18,9 +18,14 @@ Reproducible artifact + pipeline gating every push (Book 6). Human README.
 |---|---|
 | `docker compose config` valid; missing `SESSION_SECRET` refused | **verified** |
 | `npm start` (standalone) serves `/api/live` 200, `/api/health` db ok | **verified** |
-| Docker image build | **not run here** — sandbox egress blocks Debian mirrors (apt) for build containers; proxy workarounds reverted (unverifiable). Verified by CI `docker` job → see Progress Log |
-| Image boot + non-root + probes | **not run here** — CI `docker` job |
+| Docker image build (app, worker, migrate) | **verified in CI** run 40461034831 (not buildable in the Claude sandbox: egress blocks Debian mirrors; proxy workarounds reverted) |
+| Migrations in container; app boot; `/api/live` → live; `/api/health` → db ok; user `node` | **verified in CI** run 40461034831 |
+| Full pipeline on clean GitHub runner: lint, typecheck, 65 tests, build, HTTP E2E, browser E2E | **verified in CI** run 40461034831 (all 4 jobs green) |
 | CI workflow YAML parses; 4 jobs | **verified** (yaml.safe_load) |
 
 ## Known Issues
 - Worker image ships full deps (uses `tsx`); larger than needed. Bundle worker later if image size matters.
+
+## Bugs caught by CI (disclosed)
+1. Typecheck passed locally only because git-ignored `.next/` held generated route types → `typecheck` runs `next typegen` first (reproduced in clean clone: 22 errors).
+2. `public/` empty → untracked → Docker `COPY /app/public` failed → added `public/robots.txt` (keeps crawlers out of private routes).

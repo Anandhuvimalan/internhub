@@ -22,3 +22,4 @@ Submission → Review → Completion) and v3 §13's phases.
 - 2026-10-27 S0 — docs baseline (PRD, ARCHITECTURE, ADR-0001..0003, map, baselines, risks). See docs/features/S0-docs-baseline.md.
 - 2026-10-27 S1 — hardening, 65 tests (7/7 mutants caught), HTTP E2E 33/33, browser E2E 40/40. See docs/features/S1-hardening-and-verification.md.
 - 2026-10-27 S2 — Dockerfile/compose, CI (lint→types→tests→build→E2E, Docker build+boot), README, `npm start` fix. See docs/features/S2-delivery.md.
+- 2026-10-27 CI green on GitHub — run 40461034831: lint, types, 65 tests, build, HTTP+browser E2E, Docker build+boot.
