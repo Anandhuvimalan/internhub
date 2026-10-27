@@ -1,26 +1,115 @@
 @import "tailwindcss";
 
+/* InternHub — calm "workplace" palette: warm paper, ink, deep teal accent. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #f6f5f2;
+  --surface: #ffffff;
+  --surface-2: #faf9f6;
+  --line: #e4e1da;
+  --ink: #1c1b19;
+  --ink-2: #4a4741;
+  --muted: #77736b;
+  --accent: #0f5f4f;
+  --accent-ink: #ffffff;
+  --accent-soft: #e3efeb;
+  --warn: #9a5b00;
+  --warn-soft: #fbf0dc;
+  --danger: #a3271f;
+  --danger-soft: #f9e4e1;
+  --info: #2f4f9a;
+  --info-soft: #e5ebf8;
+  --ok: #1f6b3a;
+  --ok-soft: #e2f1e6;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme="light"]) {
+    --bg: #121211;
+    --surface: #1b1a18;
+    --surface-2: #201f1c;
+    --line: #2f2d29;
+    --ink: #ecebe7;
+    --ink-2: #c4c1b9;
+    --muted: #8e8a81;
+    --accent: #4fb39b;
+    --accent-ink: #0d1a17;
+    --accent-soft: #16302a;
+    --warn: #e0a64a;
+    --warn-soft: #33270f;
+    --danger: #ef7d73;
+    --danger-soft: #3a1a17;
+    --info: #8eaaf0;
+    --info-soft: #1b2440;
+    --ok: #6fcf8f;
+    --ok-soft: #15301f;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-line bg-surface;
+  }
+  .card-pad {
+    @apply p-5;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-ink-2;
+  }
+  .input {
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/20;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-accent text-accent-ink hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 border border-line bg-surface text-ink hover:bg-surface-2;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 border border-danger/30 bg-danger-soft text-danger hover:brightness-95;
+  }
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-muted;
+  }
+  .link {
+    @apply text-accent underline-offset-2 hover:underline;
+  }
+  .tab {
+    @apply border-b-2 border-transparent px-1 pb-2 text-sm text-muted hover:text-ink;
+  }
+  .tab-active {
+    @apply border-accent font-medium text-ink;
+  }
 }

@@ -1,0 +1,701 @@
+// InternHub — Internship Workspace Platform
+// All tables live in the `internship` Postgres schema so this module can sit
+// alongside an existing student-platform database without name collisions.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["internship"]
+}
+
+// ───────────────────────── Identity & access ─────────────────────────
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+
+  @@schema("internship")
+}
+
+enum RoleKey {
+  SUPER_ADMIN
+  ADMIN
+  MENTOR
+  REVIEWER
+  TEAM_LEADER
+  STUDENT
+
+  @@schema("internship")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  phone        String?
+  passwordHash String?
+  status       UserStatus @default(INVITED)
+  studentCode  String?    @unique // e.g. INT-2026-00042, only for students
+  skills       String[]   @default([])
+  activationToken String? @unique
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  roles            RoleAssignment[]
+  permissionGrants PermissionGrant[]
+  enrollments      Enrollment[]
+  teamMemberships  TeamMember[]
+  mentoredTeams    Team[]             @relation("TeamMentor")
+  taskAssignments  TaskAssignee[]
+  submissions      Submission[]
+  reviews          Review[]
+  reviewerTasks    Task[]             @relation("TaskReviewer")
+  organizedMeetings Meeting[]         @relation("MeetingOrganizer")
+  meetingInvites   MeetingParticipant[]
+  notifications    Notification[]
+  activity         ActivityEvent[]
+  presentationReviews PresentationReview[] @relation("PresReviewer")
+  presentationScores  PresentationReview[] @relation("PresStudent")
+  minutes          MeetingMinutes[]
+  auditLogs        AuditLog[]
+  convertedLead    Lead?
+
+  @@schema("internship")
+}
+
+/// Role + optional team scope. A student can additionally hold TEAM_LEADER
+/// for one team; a mentor can additionally hold REVIEWER.
+model RoleAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  role      RoleKey
+  teamId    String?
+  createdAt DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role, teamId])
+  @@index([userId])
+  @@schema("internship")
+}
+
+/// Extra fine-grained permissions on top of role defaults.
+model PermissionGrant {
+  id         String   @id @default(cuid())
+  userId     String
+  permission String
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@schema("internship")
+}
+
+model IdCounter {
+  key   String @id
+  value Int    @default(0)
+
+  @@schema("internship")
+}
+
+// ───────────────────────── Leads & admission ─────────────────────────
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  ADMITTED
+  REJECTED
+
+  @@schema("internship")
+}
+
+model Lead {
+  id                String     @id @default(cuid())
+  name              String
+  email             String
+  phone             String?
+  course            String?
+  preferredDuration Int?       // months 1–4
+  source            String     @default("website")
+  message           String?
+  status            LeadStatus @default(NEW)
+  notes             String?
+  convertedUserId   String?    @unique
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  convertedUser User? @relation(fields: [convertedUserId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([email])
+  @@schema("internship")
+}
+
+// ───────────────────────── Internships & teams ─────────────────────────
+
+enum EnrollmentStatus {
+  ACTIVE
+  ON_LEAVE
+  EXTENDED
+  WITHDRAWN
+  COMPLETED
+
+  @@schema("internship")
+}
+
+/// A batch/program. Students of different durations (1–4 months) can be
+/// enrolled in the same internship; each enrollment carries its own dates.
+model Internship {
+  id          String   @id @default(cuid())
+  name        String
+  track       String   // e.g. "Data Analytics", "Full Stack"
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  enrollments Enrollment[]
+  teams       Team[]
+
+  @@schema("internship")
+}
+
+model Enrollment {
+  id             String           @id @default(cuid())
+  userId         String
+  internshipId   String
+  durationMonths Int
+  startDate      DateTime
+  endDate        DateTime
+  status         EnrollmentStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, internshipId])
+  @@index([internshipId, status])
+  @@schema("internship")
+}
+
+model Team {
+  id           String   @id @default(cuid())
+  internshipId String
+  name         String
+  mentorId     String?
+  createdAt    DateTime @default(now())
+
+  internship Internship       @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  mentor     User?            @relation("TeamMentor", fields: [mentorId], references: [id])
+  members    TeamMember[]
+  projects   Project[]
+  roles      RoleAssignment[]
+  meetings   Meeting[]
+  activity   ActivityEvent[]
+  presentations Presentation[]
+
+  @@unique([internshipId, name])
+  @@schema("internship")
+}
+
+/// Membership rows are never deleted: moving a student sets `leftAt`, so the
+/// individual performance history survives team changes.
+model TeamMember {
+  id       String    @id @default(cuid())
+  teamId   String
+  userId   String
+  isLeader Boolean   @default(false)
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, leftAt])
+  @@index([teamId, leftAt])
+  @@schema("internship")
+}
+
+// ───────────────────────── Templates ─────────────────────────
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+
+  @@schema("internship")
+}
+
+/// Reusable blueprint. Instantiating it for a team creates an independent
+/// Project, so edits by Team Alpha never affect Team Beta.
+model ProjectTemplate {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  track         String
+  durationWeeks Int
+  createdAt     DateTime @default(now())
+
+  phases   PhaseTemplate[]
+  projects Project[]
+
+  @@schema("internship")
+}
+
+model PhaseTemplate {
+  id                   String  @id @default(cuid())
+  templateId           String
+  order                Int
+  title                String
+  offsetDays           Int
+  lengthDays           Int
+  presentationRequired Boolean @default(false)
+
+  template ProjectTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tasks    TaskTemplate[]
+
+  @@unique([templateId, order])
+  @@schema("internship")
+}
+
+model TaskTemplate {
+  id                 String   @id @default(cuid())
+  phaseTemplateId    String
+  title              String
+  description        String?
+  acceptanceCriteria String?
+  deliverables       String?
+  offsetDays         Int      @default(0) // relative to phase start
+  lengthDays         Int      @default(3)
+  priority           Priority @default(MEDIUM)
+  isTeamTask         Boolean  @default(false)
+
+  phase PhaseTemplate @relation(fields: [phaseTemplateId], references: [id], onDelete: Cascade)
+
+  @@schema("internship")
+}
+
+// ───────────────────────── Projects, phases, tasks ─────────────────────────
+
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  CLOSED
+
+  @@schema("internship")
+}
+
+enum PhaseStatus {
+  UPCOMING
+  IN_PROGRESS
+  COMPLETED
+
+  @@schema("internship")
+}
+
+enum TaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+
+  @@schema("internship")
+}
+
+model Project {
+  id         String        @id @default(cuid())
+  templateId String?
+  teamId     String
+  title      String
+  description String?
+  startDate  DateTime
+  endDate    DateTime
+  status     ProjectStatus @default(ACTIVE)
+  closedAt   DateTime?
+  createdAt  DateTime      @default(now())
+
+  template ProjectTemplate? @relation(fields: [templateId], references: [id])
+  team     Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  phases   Phase[]
+  tasks    Task[]
+  meetings Meeting[]
+  activity ActivityEvent[]
+
+  @@index([teamId, status])
+  @@schema("internship")
+}
+
+model Phase {
+  id                   String      @id @default(cuid())
+  projectId            String
+  order                Int
+  title                String
+  startDate            DateTime
+  endDate              DateTime
+  status               PhaseStatus @default(UPCOMING)
+  presentationRequired Boolean     @default(false)
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks         Task[]
+  meetings      Meeting[]
+  presentations Presentation[]
+
+  @@unique([projectId, order])
+  @@schema("internship")
+}
+
+/// Overdue is NOT a status; it is computed from dueAt + status at read time.
+model Task {
+  id                 String     @id @default(cuid())
+  projectId          String
+  phaseId            String?
+  title              String
+  description        String?
+  acceptanceCriteria String?
+  deliverables       String?
+  priority           Priority   @default(MEDIUM)
+  status             TaskStatus @default(TODO)
+  isTeamTask         Boolean    @default(false)
+  startAt            DateTime?
+  dueAt              DateTime?
+  completedAt        DateTime?
+  reviewerId         String?
+  sourceMeetingId    String?    // follow-up task created from meeting minutes
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phase        Phase?           @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  reviewer     User?            @relation("TaskReviewer", fields: [reviewerId], references: [id])
+  sourceMeeting Meeting?        @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
+  assignees    TaskAssignee[]
+  dependsOn    TaskDependency[] @relation("TaskDependsOn")
+  blocks       TaskDependency[] @relation("TaskBlocks")
+  submissions  Submission[]
+
+  @@index([projectId, status, dueAt, id])
+  @@index([reviewerId, status])
+  @@schema("internship")
+}
+
+model TaskAssignee {
+  taskId     String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId])
+  @@schema("internship")
+}
+
+model TaskDependency {
+  taskId      String
+  dependsOnId String
+
+  task      Task @relation("TaskDependsOn", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn Task @relation("TaskBlocks", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, dependsOnId])
+  @@schema("internship")
+}
+
+// ───────────────────────── Submissions & reviews ─────────────────────────
+
+enum ReviewDecision {
+  APPROVED
+  CHANGES_REQUESTED
+
+  @@schema("internship")
+}
+
+/// Every resubmission is a new row with an incremented version, so the full
+/// rework history is preserved.
+model Submission {
+  id            String   @id @default(cuid())
+  taskId        String
+  submittedById String
+  version       Int
+  note          String?
+  githubUrl     String?
+  linkUrl       String?
+  createdAt     DateTime @default(now())
+
+  task        Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submittedBy User             @relation(fields: [submittedById], references: [id])
+  files       SubmissionFile[]
+  reviews     Review[]
+
+  @@unique([taskId, version])
+  @@index([taskId, createdAt(sort: Desc)])
+  @@schema("internship")
+}
+
+model SubmissionFile {
+  id           String   @id @default(cuid())
+  submissionId String
+  storageKey   String   // object-storage key (R2/S3); content never in DB
+  fileName     String
+  sizeBytes    Int
+  mimeType     String
+  createdAt    DateTime @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@schema("internship")
+}
+
+model Review {
+  id           String         @id @default(cuid())
+  submissionId String
+  reviewerId   String
+  decision     ReviewDecision
+  feedback     String
+  score        Int?           // 0–100 quality score
+  createdAt    DateTime       @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer   User       @relation(fields: [reviewerId], references: [id])
+
+  @@index([reviewerId, createdAt])
+  @@schema("internship")
+}
+
+// ───────────────────────── Meetings & presentations ─────────────────────────
+
+enum MeetingType {
+  TEAM_MEETING
+  MENTOR_REVIEW
+  PHASE_PRESENTATION
+  ADMIN_HEAD_REVIEW
+  FINAL_PRESENTATION
+
+  @@schema("internship")
+}
+
+enum MeetingStatus {
+  REQUESTED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  REJECTED
+
+  @@schema("internship")
+}
+
+enum Rsvp {
+  PENDING
+  ACCEPTED
+  DECLINED
+
+  @@schema("internship")
+}
+
+model Meeting {
+  id                   String        @id @default(cuid())
+  type                 MeetingType
+  title                String
+  agenda               String?
+  expectedDeliverables String?
+  teamId               String?
+  projectId            String?
+  phaseId              String?
+  organizerId          String
+  startsAt             DateTime
+  endsAt               DateTime
+  meetingUrl           String?       // Google Meet / Teams link
+  recordingUrl         String?
+  status               MeetingStatus @default(SCHEDULED)
+  decisionNote         String?       // admin approval/rejection note
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  team          Team?                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  project       Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  phase         Phase?               @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  organizer     User                 @relation("MeetingOrganizer", fields: [organizerId], references: [id])
+  participants  MeetingParticipant[]
+  minutes       MeetingMinutes?
+  presentation  Presentation?
+  followUpTasks Task[]
+
+  @@index([projectId, startsAt])
+  @@index([teamId, startsAt])
+  @@index([status, startsAt])
+  @@schema("internship")
+}
+
+model MeetingParticipant {
+  meetingId String
+  userId    String
+  rsvp      Rsvp     @default(PENDING)
+  attended  Boolean?
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, userId])
+  @@index([userId])
+  @@schema("internship")
+}
+
+model MeetingMinutes {
+  id          String   @id @default(cuid())
+  meetingId   String   @unique
+  notes       String
+  decisions   String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@schema("internship")
+}
+
+enum PresentationKind {
+  PHASE
+  FINAL
+
+  @@schema("internship")
+}
+
+model Presentation {
+  id        String           @id @default(cuid())
+  meetingId String           @unique
+  teamId    String
+  phaseId   String?
+  kind      PresentationKind
+  slidesUrl String?
+  demoUrl   String?
+  approved  Boolean?
+  createdAt DateTime         @default(now())
+
+  meeting Meeting              @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  team    Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  phase   Phase?               @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  reviews PresentationReview[]
+
+  @@schema("internship")
+}
+
+/// studentId null = team-level score; set = individual score for that student.
+model PresentationReview {
+  id             String   @id @default(cuid())
+  presentationId String
+  reviewerId     String
+  studentId      String?
+  scores         Json     // { technical, implementation, communication, contribution, qa } 0–100 each
+  total          Float    // weighted
+  feedback       String?
+  createdAt      DateTime @default(now())
+
+  presentation Presentation @relation(fields: [presentationId], references: [id], onDelete: Cascade)
+  reviewer     User         @relation("PresReviewer", fields: [reviewerId], references: [id])
+  student      User?        @relation("PresStudent", fields: [studentId], references: [id])
+
+  @@schema("internship")
+}
+
+// ───────────────────────── Notifications, outbox, activity, audit ─────────────────────────
+
+enum NotificationCategory {
+  UPCOMING
+  ACTION
+  HISTORY
+
+  @@schema("internship")
+}
+
+model Notification {
+  id        String               @id @default(cuid())
+  userId    String
+  category  NotificationCategory
+  type      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@schema("internship")
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+  CANCELLED
+
+  @@schema("internship")
+}
+
+/// Transactional outbox: written in the same DB transaction as the business
+/// change, delivered by the worker with retries. `dedupeKey` prevents
+/// duplicate emails/reminders.
+model OutboxEvent {
+  id          String       @id @default(cuid())
+  type        String       // email.welcome, email.lead_ack, meeting.reminder, ...
+  payload     Json
+  dedupeKey   String       @unique
+  status      OutboxStatus @default(PENDING)
+  attempts    Int          @default(0)
+  availableAt DateTime     @default(now())
+  processedAt DateTime?
+  lastError   String?
+  createdAt   DateTime     @default(now())
+
+  @@index([status, availableAt])
+  @@schema("internship")
+}
+
+model ActivityEvent {
+  id        String   @id @default(cuid())
+  teamId    String?
+  projectId String?
+  actorId   String?
+  type      String
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  team    Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor   User?    @relation(fields: [actorId], references: [id])
+
+  @@index([teamId, createdAt(sort: Desc), id])
+  @@index([projectId, createdAt(sort: Desc), id])
+  @@schema("internship")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  entity    String
+  entityId  String
+  action    String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entity, entityId, createdAt])
+  @@schema("internship")
+}
