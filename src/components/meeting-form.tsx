@@ -28,7 +28,7 @@ export function MeetingForm({ teams, schedulable, requestable, defaults }: { tea
   const isRequest = !schedulable.includes(type) && requestable.includes(type);
   const isPresentation = type.includes("PRESENTATION");
 
-  if (!allowed.length) return <p className="text-sm text-muted">You can't schedule meetings for any team yet.</p>;
+  if (!allowed.length) return <p className="text-sm text-muted">You can&rsquo;t schedule meetings for any team yet.</p>;
 
   return (
     <ActionForm action={createMeetingAction}>
@@ -47,7 +47,7 @@ export function MeetingForm({ teams, schedulable, requestable, defaults }: { tea
         {isRequest && <p className="mt-2 text-xs text-warn">This will be sent as a request — an admin or your mentor confirms the final time.</p>}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <label className="block">
           <span className="label">Team</span>
           <select name="teamId" value={teamId} onChange={(e) => { setTeamId(e.target.value); setProjectId(""); }} className="input">
@@ -83,7 +83,7 @@ export function MeetingForm({ teams, schedulable, requestable, defaults }: { tea
         <input name="title" required className="input" placeholder={isPresentation ? "Phase 2 Presentation" : "Weekly sprint sync"} />
       </label>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <label className="block">
           <span className="label">{isRequest ? "Proposed date & time (IST)" : "Date & time (IST)"}</span>
           <input name="startsAt" type="datetime-local" required className="input" />

@@ -137,7 +137,7 @@ async function main() {
   //    "Allocate teams" can be demoed from the admin panel. ──
   const alphaMembers = students.filter((_, i) => durations[i % 5] === 3).slice(0, 5);
   const alpha = await db.team.create({ data: { internshipId: da.id, name: "Alpha", mentorId: mentorA.id } });
-  await db.teamMember.createMany({ data: alphaMembers.map((s, i) => ({ teamId: alpha.id, userId: s.id, isLeader: i === 0, joinedAt: days(-21) })) });
+  await db.teamMember.createMany({ data: alphaMembers.map((s, i) => ({ teamId: alpha.id, internshipId: da.id, userId: s.id, activeUserId: s.id, isLeader: i === 0, joinedAt: days(-21) })) });
   await db.roleAssignment.create({ data: { userId: alphaMembers[0].id, role: "TEAM_LEADER", teamId: alpha.id } });
 
   // instantiate Sales template for Alpha, started 3 weeks ago
@@ -205,7 +205,7 @@ async function main() {
   const phase2 = await db.phase.findFirstOrThrow({ where: { projectId: project.id, order: 2 } });
   await db.meeting.update({ where: { id: pres.id }, data: { phaseId: phase2.id } });
   await db.presentation.create({ data: { meetingId: pres.id, teamId: alpha.id, phaseId: phase2.id, kind: "PHASE" } });
-  await mk("ADMIN_HEAD_REVIEW", "Admin Head Review — mid-project", new Date(days(8).setUTCHours(6, 30, 0, 0)), alphaMembers[0].id, "REQUESTED");
+  const headReview = await mk("ADMIN_HEAD_REVIEW", "Admin Head Review — mid-project", new Date(days(8).setUTCHours(6, 30, 0, 0)), alphaMembers[0].id, "REQUESTED");
 
   // Activity + notifications
   const acts = [
@@ -221,7 +221,7 @@ async function main() {
     data: [
       ...alphaMembers.map((m) => ({ userId: m.id, category: "ACTION" as const, type: "meeting.invite", title: "Phase Presentation: Phase 2 Presentation", body: "Please RSVP", link: `/meetings/${pres.id}` })),
       { userId: reviewerA.id, category: "ACTION" as const, type: "review.requested", title: "Submission: Clean customer sales data", body: "Team Alpha · v1", link: `/tasks/${p2[0].id}` },
-      { userId: admin.id, category: "ACTION" as const, type: "meeting.request", title: "Admin Head Review requested by Team Alpha", link: "/admin/meetings" },
+      { userId: admin.id, category: "ACTION" as const, type: "meeting.request", title: "Admin Head Review requested by Team Alpha", link: `/meetings/${headReview.id}` },
     ],
   });
 

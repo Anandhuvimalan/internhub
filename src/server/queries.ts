@@ -85,7 +85,14 @@ export async function studentDashboard(u: CurrentUser) {
   }
   for (const t of myTasks.filter(isOverdue).slice(0, 3)) actions.push({ label: `Overdue: ${t.title}`, detail: t.project.title, href: `/tasks/${t.id}` });
 
-  return { teams, enrollment, counts, myTasks, teamTasks, activeProjects, meetings, unread, pendingInvites, actions };
+  const internshipWeek = enrollment
+    ? {
+        week: Math.max(1, Math.ceil((now.getTime() - enrollment.startDate.getTime()) / (7 * 86_400_000))),
+        total: Math.round((enrollment.endDate.getTime() - enrollment.startDate.getTime()) / (7 * 86_400_000)),
+      }
+    : null;
+
+  return { teams, enrollment, internshipWeek, counts, myTasks, teamTasks, activeProjects, meetings, unread, pendingInvites, actions };
 }
 
 // ── Admin overview ───────────────────────────────────────────────────

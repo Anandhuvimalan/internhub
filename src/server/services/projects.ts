@@ -151,7 +151,8 @@ export async function closeProject(u: CurrentUser, projectId: string) {
   const blockers = await closureBlockers(projectId);
   if (blockers.length) throw badRequest(`Cannot close yet: ${blockers.join("; ")}`);
   return db.$transaction(async (tx) => {
-    await tx.project.update({ where: { id: projectId }, data: { status: "CLOSED", closedAt: new Date() } });
+    const closed = await tx.project.updateMany({ where: { id: projectId, status: { not: "CLOSED" } }, data: { status: "CLOSED", closedAt: new Date() } });
+    if (!closed.count) throw conflict("Project is already closed");
     await activity(tx, { teamId: project.teamId, projectId, actorId: u.id, type: "project.closed", message: `Project "${project.title}" officially closed` });
     await audit(tx, { actorId: u.id, entity: "Project", entityId: projectId, action: "close" });
   });
@@ -245,7 +246,9 @@ export async function changeTaskStatus(u: CurrentUser, taskId: string, to: TaskS
     if (blocking.length) throw conflict(`Blocked by: ${blocking.map((b) => b.dependsOn.title).join(", ")}`);
   }
   return db.$transaction(async (tx) => {
-    await tx.task.update({ where: { id: taskId }, data: { status: to } });
+    // compare-and-set: the transition was validated against task.status, so require it still holds
+    const moved = await tx.task.updateMany({ where: { id: taskId, status: task.status }, data: { status: to } });
+    if (!moved.count) throw conflict("This task was just updated — refresh and try again");
     await activity(tx, {
       teamId: task.project.teamId,
       projectId: task.projectId,

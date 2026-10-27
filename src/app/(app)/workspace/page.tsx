@@ -24,12 +24,7 @@ export default async function Workspace() {
   const d = await studentDashboard(u);
   const team = d.teams[0];
   const project = d.activeProjects[0];
-  const internshipWeek = d.enrollment
-    ? {
-        week: Math.max(1, Math.ceil((Date.now() - d.enrollment.startDate.getTime()) / (7 * 86_400_000))),
-        total: Math.round((d.enrollment.endDate.getTime() - d.enrollment.startDate.getTime()) / (7 * 86_400_000)),
-      }
-    : null;
+  const internshipWeek = d.internshipWeek;
 
   return (
     <>
@@ -63,7 +58,7 @@ export default async function Workspace() {
         <Stat value={d.unread} label="Notifications" />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {project ? (
             <Card title="Active project" action={<Badge tone="accent">Week {project.week}/{project.weeks}</Badge>}>
@@ -87,7 +82,7 @@ export default async function Workspace() {
           )}
 
           <Card title="My task board" action={<span className="text-xs text-muted">{d.myTasks.length} tasks</span>}>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {COLUMNS.map((col) => {
                 const items = d.myTasks.filter((t) => (col.statuses as readonly string[]).includes(t.status));
                 return (
@@ -136,7 +131,7 @@ export default async function Workspace() {
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="order-first space-y-6 lg:order-none">{/* phones: actions & schedule before the board */}
           <Card title="Action required">
             {d.actions.length ? (
               <ul className="space-y-2">

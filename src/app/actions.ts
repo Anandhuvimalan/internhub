@@ -6,10 +6,11 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import type { Rsvp, TaskStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { createSession, destroySession, homePathFor, getCurrentUser, requireUser, verifyPassword } from "@/lib/auth";
-import { actionError, type ActionState } from "@/lib/api";
+import { createSession, destroySession, homePathFor, requireUser } from "@/lib/auth";
+import { checkCredentials, toCurrentUser } from "@/lib/session";
+import { actionError, ipFromHeaders, type ActionState } from "@/lib/api";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { badRequest, forbidden } from "@/lib/errors";
+import { forbidden } from "@/lib/errors";
 import { parseLocalDateTime } from "@/lib/format";
 import { activateAccount, admitLead, createLead, setLeadStatus, updateEnrollment } from "@/server/services/admissions";
 import { allocateTeams, internshipInput, moveStudent, setLeader, setMentor } from "@/server/services/teams";
@@ -31,8 +32,7 @@ import { markNotificationsRead } from "@/server/queries";
 const obj = (fd: FormData) => Object.fromEntries([...fd.entries()].filter(([k]) => !k.startsWith("$")));
 
 async function ip() {
-  const h = await headers();
-  return h.get("cf-connecting-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  return ipFromHeaders(await headers());
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────
@@ -40,20 +40,19 @@ async function ip() {
 export async function loginAction(_: ActionState, fd: FormData): Promise<ActionState> {
   const email = String(fd.get("email") ?? "").trim().toLowerCase();
   const password = String(fd.get("password") ?? "");
+  let home: string;
   try {
     await checkRateLimit("login", `acct:${email}`);
-    await checkRateLimit("loginIp", `ip:${await ip()}`).catch(() => {
-      throw badRequest("Too many attempts from this network — wait a few minutes.");
-    });
-    const user = await db.user.findUnique({ where: { email } });
-    if (!user?.passwordHash || user.status !== "ACTIVE" || !(await verifyPassword(password, user.passwordHash)))
-      return { error: "Email or password is incorrect" };
-    await createSession(user.id);
+    await checkRateLimit("loginIp", `ip:${await ip()}`);
+    const userId = await checkCredentials(email, password); // constant-ish time, rehashes legacy
+    if (!userId) return { error: "Email or password is incorrect" };
+    await createSession(userId);
+    const user = await db.user.findUniqueOrThrow({ where: { id: userId }, include: { roles: true, permissionGrants: true } });
+    home = homePathFor(toCurrentUser(user));
   } catch (e) {
     return actionError(e);
   }
-  const u = await getCurrentUser();
-  redirect(u ? homePathFor(u) : "/login");
+  redirect(home);
 }
 
 export async function logoutAction() {
@@ -86,14 +85,17 @@ export async function submitLeadAction(_: ActionState, fd: FormData): Promise<Ac
 }
 
 export async function admitLeadAction(_: ActionState, fd: FormData): Promise<ActionState> {
+  let target: string;
   try {
     const u = await requireUser();
     const { user } = await admitLead(u, String(fd.get("leadId")), obj(fd));
     revalidatePath("/admin/leads");
-    return { ok: true, message: `Admitted as ${user.studentCode}. Welcome email queued.` };
+    // The lead leaves the "New" list (unmounting this form), so confirm on the Admitted view.
+    target = `/admin/leads?status=ADMITTED&q=${encodeURIComponent(user.email)}&admitted=${encodeURIComponent(user.studentCode ?? "")}`;
   } catch (e) {
     return actionError(e);
   }
+  redirect(target);
 }
 
 export async function leadStatusAction(fd: FormData) {

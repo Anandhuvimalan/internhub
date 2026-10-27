@@ -33,10 +33,11 @@ export default async function Performance(props: PageProps<"/performance">) {
         <Stat value={pct(m.attendanceRate)} label="Meeting attendance" />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_300px]">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
         <Card title="Task record">
           {p.tasks.length ? (
-            <table className="w-full text-sm">
+            <div className="-mx-1 overflow-x-auto px-1">
+<table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-muted">
                   <th className="py-2 font-medium">Task</th>
@@ -62,6 +63,7 @@ export default async function Performance(props: PageProps<"/performance">) {
                 ))}
               </tbody>
             </table>
+</div>
           ) : (
             <Empty title="No tasks yet" />
           )}

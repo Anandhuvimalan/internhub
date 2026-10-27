@@ -36,6 +36,7 @@ function s3() {
   client ??= new S3Client({
     region: process.env.S3_REGION ?? "auto",
     endpoint: process.env.S3_ENDPOINT,
+    forcePathStyle: true, // presigned URLs stay on S3_ENDPOINT's origin (matches CSP connect-src)
     credentials: {
       accessKeyId: process.env.S3_ACCESS_KEY_ID!,
       secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,

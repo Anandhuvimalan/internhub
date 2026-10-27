@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { httpUrl } from "@/lib/validation";
 import { db, type Tx } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { activity, audit, enqueue, notify } from "@/lib/events";
@@ -20,7 +21,7 @@ export const submissionInput = z
   .object({
     note: z.string().trim().max(5000).optional().or(z.literal("")),
     githubUrl: z.string().trim().url().refine((v) => /^https:\/\/(www\.)?github\.com\//.test(v), "Must be a github.com URL").optional().or(z.literal("")),
-    linkUrl: z.string().trim().url().optional().or(z.literal("")),
+    linkUrl: httpUrl().optional().or(z.literal("")),
     files: z.array(fileRef).max(10).default([]),
   })
   .refine((v) => v.githubUrl || v.linkUrl || v.files.length, "Add a GitHub repo, a link or a file");
@@ -84,7 +85,14 @@ export async function submitTask(u: CurrentUser, taskId: string, raw: unknown) {
     });
     let reviewerId = task.reviewerId ?? task.project.team.mentorId ?? (await pickReviewer(tx, task.project.teamId));
     if (reviewerId === u.id) reviewerId = await pickReviewer(tx, task.project.teamId);
-    await tx.task.update({ where: { id: taskId }, data: { status: "IN_REVIEW", reviewerId } });
+    // Conditional transition: a concurrent submit (double click, two teammates on a team task)
+    // that already moved the task to IN_REVIEW makes this count 0 → conflict, and the whole
+    // transaction (including the new Submission row) rolls back.
+    const moved = await tx.task.updateMany({
+      where: { id: taskId, status: { in: ["TODO", "IN_PROGRESS", "CHANGES_REQUESTED"] } },
+      data: { status: "IN_REVIEW", reviewerId },
+    });
+    if (!moved.count) throw conflict("This task was just submitted — refresh to see it");
 
     if (reviewerId)
       await notify(tx, [reviewerId], {
@@ -148,13 +156,17 @@ export async function reviewSubmission(u: CurrentUser, submissionId: string, raw
   if (latest?.id !== sub.id) throw conflict("A newer version has been submitted — review that one");
 
   return db.$transaction(async (tx) => {
+    const approved = input.decision === "APPROVED";
+    // Conditional transition first: of two reviewers deciding at the same instant, only one
+    // moves the task out of IN_REVIEW. The unique Review(submissionId) constraint is the
+    // database-level backstop for the same race.
+    const moved = await tx.task.updateMany({
+      where: { id: task.id, status: "IN_REVIEW" },
+      data: { status: input.decision, completedAt: approved ? new Date() : null },
+    });
+    if (!moved.count) throw conflict("Someone else just reviewed this submission");
     const review = await tx.review.create({
       data: { submissionId, reviewerId: u.id, decision: input.decision, feedback: input.feedback, score: input.score ?? null },
-    });
-    const approved = input.decision === "APPROVED";
-    await tx.task.update({
-      where: { id: task.id },
-      data: { status: input.decision, completedAt: approved ? new Date() : null },
     });
     await notify(tx, task.assignees.map((a) => a.userId), {
       category: approved ? "HISTORY" : "ACTION",
@@ -189,13 +201,19 @@ export async function reviewQueue(u: CurrentUser, opts: { all?: boolean } = {}) 
     orderBy: { updatedAt: "asc" },
     take: 100,
   });
+  const now = Date.now();
+  const slaMs = REVIEW_SLA_HOURS * 3_600_000;
+  const pendingWithAge = pending.map((t) => {
+    const waitingSince = t.submissions[0]?.createdAt ?? t.updatedAt;
+    return { ...t, waitingSince, pastSla: now - waitingSince.getTime() > slaMs };
+  });
   const recent = await db.review.findMany({
     where: opts.all && u.isStaff ? {} : { reviewerId: u.id },
     include: { submission: { include: { task: { select: { id: true, title: true, project: { select: { team: { select: { name: true } } } } } } } } },
     orderBy: { createdAt: "desc" },
     take: 20,
   });
-  return { pending, recent };
+  return { pending: pendingWithAge, recent };
 }
 
 /** Load a task for the detail page, enforcing access. */

@@ -42,7 +42,9 @@ model User {
   status       UserStatus @default(INVITED)
   studentCode  String?    @unique // e.g. INT-2026-00042, only for students
   skills       String[]   @default([])
-  activationToken String? @unique
+  activationTokenHash String?   @unique // SHA-256 of the emailed one-time token
+  activationExpiresAt DateTime?
+  sessionVersion      Int         @default(0) // bump to revoke every session (logout, password set)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -208,16 +210,22 @@ model Team {
 /// Membership rows are never deleted: moving a student sets `leftAt`, so the
 /// individual performance history survives team changes.
 model TeamMember {
-  id       String    @id @default(cuid())
-  teamId   String
-  userId   String
-  isLeader Boolean   @default(false)
-  joinedAt DateTime  @default(now())
-  leftAt   DateTime?
+  id           String    @id @default(cuid())
+  teamId       String
+  internshipId String    // denormalized from team for the constraint below
+  userId       String
+  /// = userId while active, NULL after leaving. UNIQUE(internshipId, activeUserId) means a
+  /// student holds at most one active team per internship (NULLs are distinct in Postgres),
+  /// enforced by the database even under concurrent allocation.
+  activeUserId String?
+  isLeader     Boolean   @default(false)
+  joinedAt     DateTime  @default(now())
+  leftAt       DateTime?
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([internshipId, activeUserId])
   @@index([userId, leftAt])
   @@index([teamId, leftAt])
   @@schema("internship")
@@ -469,6 +477,7 @@ model Review {
   submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   reviewer   User       @relation(fields: [reviewerId], references: [id])
 
+  @@unique([submissionId]) // one decision per submission version — blocks concurrent double review
   @@index([reviewerId, createdAt])
   @@schema("internship")
 }

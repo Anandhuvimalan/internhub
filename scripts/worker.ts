@@ -42,6 +42,15 @@ async function sendMail(to: string, mail: { subject: string; html: string }) {
 
 type Handler = (e: OutboxEvent, p: Record<string, unknown>) => Promise<void>;
 
+/** One-time secrets (activation links) must not stay at rest in the outbox once delivered. */
+const SECRET_KEYS = ["activationToken"];
+function redact(payload: OutboxEvent["payload"]) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload ?? undefined;
+  const copy: Record<string, unknown> = { ...(payload as Record<string, unknown>) };
+  for (const k of SECRET_KEYS) if (copy[k]) copy[k] = "[redacted]";
+  return copy as OutboxEvent["payload"] & object;
+}
+
 const handlers: Record<string, Handler> = {
   "email.lead_ack": async (_e, p) => sendMail(String(p.to), tpl.leadAck({ name: String(p.name) })),
 
@@ -121,7 +130,10 @@ async function processOne(e: OutboxEvent) {
   try {
     if (!h) throw new Error(`No handler for ${e.type}`);
     await h(e, e.payload as Record<string, unknown>);
-    await db.outboxEvent.update({ where: { id: e.id }, data: { status: "DONE", processedAt: new Date(), lastError: null } });
+    await db.outboxEvent.update({
+      where: { id: e.id },
+      data: { status: "DONE", processedAt: new Date(), lastError: null, payload: redact(e.payload) },
+    });
   } catch (err) {
     const throttled = err instanceof Throttled;
     const dead = !throttled && e.attempts >= MAX_ATTEMPTS;

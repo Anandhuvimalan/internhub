@@ -8,7 +8,7 @@ Submission → Review → Completion) and v3 §13's phases.
 |---|---|---|---|
 | M1 | MVP feature build (FR-1…FR-11) | — | Done (unverified end-to-end at the time) |
 | S0 | Adopt build-web-app workflow: docs baseline | M1 | Done |
-| S1 | Security & concurrency hardening + tests + end-to-end verification | S0 | In progress |
+| S1 | Security & concurrency hardening + tests + end-to-end verification | S0 | Done |
 | S2 | Delivery: Docker, CI, README | S1 | Planned |
 | S3 | Staging + load test against PRD NFR-1/2 (k6), fix measured hotspots | S2, staging infra | Planned — needs staging environment |
 | S4 | Admin MFA (R-2) | S1 | Planned |
@@ -20,3 +20,4 @@ Submission → Review → Completion) and v3 §13's phases.
 ## Progress Log
 - 2026-10-27 M1 — MVP built and pushed (`4ca3b39`); build + typecheck only.
 - 2026-10-27 S0 — docs baseline (PRD, ARCHITECTURE, ADR-0001..0003, map, baselines, risks). See docs/features/S0-docs-baseline.md.
+- 2026-10-27 S1 — hardening, 65 tests (7/7 mutants caught), HTTP E2E 27/27, browser E2E 40/40. See docs/features/S1-hardening-and-verification.md.

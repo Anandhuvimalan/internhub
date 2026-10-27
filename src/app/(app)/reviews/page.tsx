@@ -11,8 +11,7 @@ export default async function Reviews(props: PageProps<"/reviews">) {
   const u = await pageUser("reviews:perform");
   const all = sp.scope === "all" && u.isStaff;
   const q = await guarded(() => reviewQueue(u, { all }));
-  const slaMs = REVIEW_SLA_HOURS * 3_600_000;
-  const overdue = q.pending.filter((t) => Date.now() - (t.submissions[0]?.createdAt ?? t.updatedAt).getTime() > slaMs).length;
+  const overdue = q.pending.filter((t) => t.pastSla).length;
   const resubs = q.pending.filter((t) => (t.submissions[0]?.version ?? 1) > 1).length;
 
   return (
@@ -40,7 +39,7 @@ export default async function Reviews(props: PageProps<"/reviews">) {
           <ul className="divide-y divide-line">
             {q.pending.map((t) => {
               const s = t.submissions[0];
-              const late = s && Date.now() - s.createdAt.getTime() > slaMs;
+              const late = t.pastSla;
               return (
                 <li key={t.id} className="flex flex-wrap items-center gap-3 py-3">
                   <div className="min-w-0 flex-1">

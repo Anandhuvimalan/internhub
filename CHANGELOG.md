@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### S1 — Security hardening and verification (2026-10-27)
+- Signing out now ends the session everywhere; passwords use a memory-hard hash; login no
+  longer reveals which emails are registered; activation links expire after 7 days and work once.
+- API changes from other websites are blocked; rate limits can no longer be bypassed with a
+  forged IP header; browsers receive strict security headers.
+- Simultaneous actions (two reviewers, double-clicked submit, two admins allocating teams)
+  can no longer produce duplicate or conflicting results.
+- Admins now see the new student ID after admitting a lead; every screen fits a phone without
+  sideways scrolling; students on phones see "Action required" first.
+- Added automated tests (65), an HTTP end-to-end check and a browser end-to-end check.
+
 ### S0 — Project documentation (2026-10-27)
 - Added product requirements, architecture description, three architecture decision records,
   risk register, security and performance baselines, system conventions and a project map, so

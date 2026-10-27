@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { LeadStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { pageUser } from "@/server/page-guard";
-import { Card, Empty, Field, PageHeader, StatusBadge } from "@/components/ui";
+import { Empty, Field, PageHeader, StatusBadge } from "@/components/ui";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { fmtDate, toLocalInput } from "@/lib/format";
 import { admitLeadAction, leadStatusAction } from "@/app/actions";
@@ -15,6 +15,7 @@ export default async function Leads(props: PageProps<"/admin/leads">) {
   await pageUser("leads:read");
   const status = FILTERS.includes(String(sp.status) as LeadStatus) ? (String(sp.status) as LeadStatus | "ALL") : "NEW";
   const q = sp.q ? String(sp.q).trim() : "";
+  const admitted = typeof sp.admitted === "string" && /^INT-\d{4}-\d{5}$/.test(sp.admitted) ? sp.admitted : null;
   const [leads, internships, counts] = await Promise.all([
     db.lead.findMany({
       where: {
@@ -37,6 +38,11 @@ export default async function Leads(props: PageProps<"/admin/leads">) {
         title="Leads & Admissions"
         subtitle="Enquiries stay leads until approved. Approval generates the student ID, enrolls the student and queues the welcome email."
       />
+      {admitted && (
+        <p role="status" className="mb-4 rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
+          Admitted as <span className="font-mono font-semibold">{admitted}</span>. The activation email has been queued.
+        </p>
+      )}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <nav className="flex gap-4 border-b border-line">
           {FILTERS.map((f) => (
@@ -80,7 +86,7 @@ export default async function Leads(props: PageProps<"/admin/leads">) {
                 <details className="mt-3 rounded-lg bg-surface-2 px-4 py-2">
                   <summary className="cursor-pointer text-sm font-medium text-accent">Approve admission</summary>
                   {internships.length ? (
-                    <ActionForm action={admitLeadAction} className="mt-3 grid items-end gap-3 pb-2 sm:grid-cols-[2fr_1fr_1fr_auto]">
+                    <ActionForm action={admitLeadAction} className="mt-3 grid grid-cols-1 items-end gap-3 pb-2 sm:grid-cols-[2fr_1fr_1fr_auto]">
                       <input type="hidden" name="leadId" value={l.id} />
                       <Field label="Internship batch">
                         <select name="internshipId" className="input" defaultValue={internships.find((i) => i.track === l.course)?.id ?? internships[0].id}>

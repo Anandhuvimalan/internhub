@@ -37,7 +37,7 @@ export default async function ProjectPage(props: PageProps<"/projects/[id]">) {
         actions={<StatusBadge status={p.status} />}
       />
 
-      <div className="mb-6 grid gap-4 md:grid-cols-[2fr_1fr]">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-[2fr_1fr]">
         <div className="card card-pad">
           <div className="flex items-center justify-between text-sm">
             <span className="text-ink-2">
@@ -113,7 +113,7 @@ export default async function ProjectPage(props: PageProps<"/projects/[id]">) {
       )}
 
       {tab === "tasks" && (
-        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
           <Card title="All tasks">
             <TaskTable tasks={tasks} showPhase phases={p.phases} />
           </Card>

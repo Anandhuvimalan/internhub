@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
-import type { MeetingType, Rsvp } from "@prisma/client";
+import { httpUrl } from "@/lib/validation";
+import type { MeetingStatus, MeetingType, Prisma, Rsvp } from "@prisma/client";
 import { db, type Tx } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { activity, audit, cancelQueued, enqueue, notify } from "@/lib/events";
@@ -29,7 +30,7 @@ export const meetingInput = z.object({
   phaseId: z.string().optional().or(z.literal("")),
   startsAt: z.string().min(1, "Choose a date and time"),
   durationMin: z.coerce.number().int().min(15).max(480).default(60),
-  meetingUrl: z.string().trim().url("Meeting link must be a URL").optional().or(z.literal("")),
+  meetingUrl: httpUrl("Meeting link must be an http(s) URL").optional().or(z.literal("")),
   participantIds: z.array(z.string()).default([]),
 });
 
@@ -73,6 +74,15 @@ async function scheduleReminders(tx: Tx, meetingId: string, startsAt: Date) {
     if (at > new Date())
       await enqueue(tx, "meeting.reminder", { meetingId, startsAt: startsAt.toISOString(), minutesBefore: mins }, `meeting:${meetingId}:r${mins}:${startsAt.getTime()}`, at);
   }
+}
+
+/**
+ * Compare-and-set on meeting status. Two coordinators acting on the same meeting at once
+ * (approve vs decline, complete vs cancel) can't both win: the loser gets a conflict.
+ */
+async function transition(tx: Tx, meetingId: string, from: MeetingStatus | MeetingStatus[], data: Prisma.MeetingUpdateManyMutationInput) {
+  const res = await tx.meeting.updateMany({ where: { id: meetingId, status: Array.isArray(from) ? { in: from } : from }, data });
+  if (!res.count) throw conflict("This meeting was just updated by someone else — refresh and try again");
 }
 
 async function sendInvites(tx: Tx, meeting: { id: string; title: string; type: MeetingType; startsAt: Date; teamId: string | null }, userIds: string[], organizerId: string) {
@@ -180,7 +190,7 @@ export async function requestMeeting(u: CurrentUser, raw: unknown) {
 export const decisionInput = z.object({
   approve: z.coerce.boolean(),
   startsAt: z.string().optional().or(z.literal("")),
-  meetingUrl: z.string().trim().url().optional().or(z.literal("")),
+  meetingUrl: httpUrl().optional().or(z.literal("")),
   note: z.string().trim().max(1000).optional().or(z.literal("")),
 });
 
@@ -195,21 +205,19 @@ export async function decideRequest(u: CurrentUser, meetingId: string, raw: unkn
 
   return db.$transaction(async (tx) => {
     if (!input.approve) {
-      await tx.meeting.update({ where: { id: m.id }, data: { status: "REJECTED", decisionNote: input.note || null } });
+      await transition(tx, m.id, "REQUESTED", { status: "REJECTED", decisionNote: input.note || null });
       await notify(tx, [m.organizerId], { category: "HISTORY", type: "meeting.rejected", title: `Request declined: ${m.title}`, body: input.note || undefined, link: `/meetings/${m.id}` });
       return;
     }
     if (startsAt < new Date()) throw badRequest("Choose a future time");
-    const updated = await tx.meeting.update({
-      where: { id: m.id },
-      data: {
-        status: "SCHEDULED",
-        startsAt,
-        endsAt: new Date(startsAt.getTime() + (m.endsAt.getTime() - m.startsAt.getTime())),
-        meetingUrl: input.meetingUrl || m.meetingUrl,
-        decisionNote: input.note || null,
-      },
+    await transition(tx, m.id, "REQUESTED", {
+      status: "SCHEDULED",
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + (m.endsAt.getTime() - m.startsAt.getTime())),
+      meetingUrl: input.meetingUrl || m.meetingUrl,
+      decisionNote: input.note || null,
     });
+    const updated = await tx.meeting.findUniqueOrThrow({ where: { id: m.id } });
     const participants = await defaultParticipants(tx, m.teamId!, [u.id], m.organizerId);
     await tx.meetingParticipant.createMany({ data: participants.map((userId) => ({ meetingId: m.id, userId, rsvp: userId === u.id ? "ACCEPTED" : "PENDING" })), skipDuplicates: true });
     await sendInvites(tx, updated, participants, u.id);
@@ -225,7 +233,7 @@ export async function reschedule(u: CurrentUser, meetingId: string, startsAtRaw:
   const startsAt = parseLocalDateTime(startsAtRaw);
   if (startsAt < new Date()) throw badRequest("Choose a future time");
   return db.$transaction(async (tx) => {
-    await tx.meeting.update({ where: { id: m.id }, data: { startsAt, endsAt: new Date(startsAt.getTime() + (m.endsAt.getTime() - m.startsAt.getTime())) } });
+    await transition(tx, m.id, "SCHEDULED", { startsAt, endsAt: new Date(startsAt.getTime() + (m.endsAt.getTime() - m.startsAt.getTime())) });
     await tx.meetingParticipant.updateMany({ where: { meetingId: m.id, userId: { not: u.id } }, data: { rsvp: "PENDING" } });
     await scheduleReminders(tx, m.id, startsAt); // cancels the old reminders first
     await notify(tx, m.participants.map((p) => p.userId).filter((id) => id !== u.id), {
@@ -245,7 +253,7 @@ export async function cancelMeeting(u: CurrentUser, meetingId: string) {
   if (!["SCHEDULED", "REQUESTED"].includes(m.status)) throw conflict("Meeting cannot be cancelled");
   if (!(m.organizerId === u.id || u.isStaff || (m.teamId && (await canSuperviseTeam(u, m.teamId))))) throw forbidden();
   return db.$transaction(async (tx) => {
-    await tx.meeting.update({ where: { id: m.id }, data: { status: "CANCELLED" } });
+    await transition(tx, m.id, ["SCHEDULED", "REQUESTED"], { status: "CANCELLED" });
     await cancelQueued(tx, `meeting:${m.id}:`);
     await notify(tx, m.participants.map((p) => p.userId).filter((id) => id !== u.id), { category: "HISTORY", type: "meeting.cancelled", title: `Cancelled: ${m.title}`, link: `/meetings/${m.id}` });
   });
@@ -282,11 +290,11 @@ export async function completeMeeting(u: CurrentUser, meetingId: string, raw: un
   for (const f of input.followUps) if (!memberIds.has(f.assigneeId)) throw badRequest("Follow-up owners must be team members");
 
   return db.$transaction(async (tx) => {
+    await transition(tx, m.id, "SCHEDULED", { status: "COMPLETED" });
     await tx.meetingMinutes.create({ data: { meetingId: m.id, notes: input.notes, decisions: input.decisions || null, createdById: u.id } });
     const attended = new Set(input.attendeeIds);
     for (const p of m.participants)
       await tx.meetingParticipant.update({ where: { meetingId_userId: { meetingId: m.id, userId: p.userId } }, data: { attended: attended.has(p.userId) } });
-    await tx.meeting.update({ where: { id: m.id }, data: { status: "COMPLETED" } });
     await cancelQueued(tx, `meeting:${m.id}:`);
     for (const f of input.followUps) {
       const t = await tx.task.create({
@@ -312,7 +320,7 @@ export async function completeMeeting(u: CurrentUser, meetingId: string, raw: un
 // ── Presentations ────────────────────────────────────────────────────
 
 export async function updatePresentationMaterials(u: CurrentUser, presentationId: string, raw: unknown) {
-  const input = z.object({ slidesUrl: z.string().trim().url().optional().or(z.literal("")), demoUrl: z.string().trim().url().optional().or(z.literal("")) }).parse(raw);
+  const input = z.object({ slidesUrl: httpUrl().optional().or(z.literal("")), demoUrl: httpUrl().optional().or(z.literal("")) }).parse(raw);
   const p = await db.presentation.findUnique({ where: { id: presentationId } });
   if (!p) throw notFound("Presentation");
   const member = await db.teamMember.count({ where: { teamId: p.teamId, userId: u.id, leftAt: null } });

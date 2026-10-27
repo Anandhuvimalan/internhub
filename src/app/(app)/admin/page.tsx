@@ -27,7 +27,7 @@ export default async function AdminHome() {
         <Stat value={o.stats.pendingReviews} label="Pending reviews" tone={o.attention.overdueReviews ? "warn" : "default"} />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card title="Project activity — last 7 days" className="lg:col-span-2">
           <div className="flex h-44 items-end gap-3" role="img" aria-label="Activity events per day">
             {o.days.map((d) => (
@@ -55,7 +55,8 @@ export default async function AdminHome() {
 
       <Card title="Teams that need support" className="mt-6">
         {o.teamsNeedingHelp.length ? (
-          <table className="w-full text-sm">
+          <div className="-mx-1 overflow-x-auto px-1">
+<table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-muted">
                 <th className="py-2 font-medium">Team</th>
@@ -75,6 +76,7 @@ export default async function AdminHome() {
               ))}
             </tbody>
           </table>
+</div>
         ) : (
           <Empty title="No team has overdue work" />
         )}

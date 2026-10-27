@@ -18,11 +18,11 @@ export default function Landing() {
         </Suspense>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-10 md:grid-cols-[1.15fr_1fr] md:pt-16">
+      <main className="mx-auto grid grid-cols-1 max-w-6xl gap-12 px-6 pb-20 pt-10 md:grid-cols-[1.15fr_1fr] md:pt-16">
         <section>
           <div className="eyebrow mb-4">Virtual internship workspace</div>
           <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight md:text-5xl">
-            Work like you're already on the team.
+            Work like you&rsquo;re already on the team.
           </h1>
           <p className="mt-5 max-w-xl text-lg text-ink-2">
             Join a project team, ship real deliverables through phases and reviews, present to mentors, and build a
@@ -50,7 +50,7 @@ export default function Landing() {
             <Field label="Full name">
               <input name="name" required className="input" autoComplete="name" />
             </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Email">
                 <input name="email" type="email" required className="input" autoComplete="email" />
               </Field>
@@ -58,7 +58,7 @@ export default function Landing() {
                 <input name="phone" className="input" autoComplete="tel" />
               </Field>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Track">
                 <select name="course" className="input" defaultValue="Data Analytics">
                   <option>Data Analytics</option>

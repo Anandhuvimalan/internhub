@@ -66,10 +66,10 @@ export default async function TaskPage(props: PageProps<"/tasks/[id]">) {
         ))}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
           <Card title="Details">
-            <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
               <Info label="Assigned to" value={t.isTeamTask ? `Team ${t.project.team.name}` : t.assignees.map((a) => a.user.name).join(", ") || "—"} />
               <Info label="Reviewer" value={t.reviewer?.name ?? "Auto-assigned on submission"} />
               <Info label="Start / Due" value={`${fmtDate(t.startAt)} → ${fmtDate(t.dueAt)}`} />

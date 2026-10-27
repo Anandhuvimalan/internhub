@@ -33,7 +33,7 @@ export default async function TeamPage(props: PageProps<"/teams/[id]">) {
   return (
     <>
       <PageHeader eyebrow={team.internship.name} title={`Team ${team.name}`} subtitle={`Mentor: ${team.mentor?.name ?? "unassigned"} · ${active.length} active members`} />
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         <div className="space-y-6">
           <Card title="Members">
             <ul className="divide-y divide-line">

@@ -87,7 +87,7 @@ export async function allocateTeams(u: CurrentUser, raw: unknown) {
         const team = await tx.team.create({ data: { internshipId, name, mentorId } });
         const leader = group[randomInt(group.length)];
         await tx.teamMember.createMany({
-          data: group.map((e) => ({ teamId: team.id, userId: e.userId, isLeader: e.userId === leader.userId })),
+          data: group.map((e) => ({ teamId: team.id, internshipId, userId: e.userId, activeUserId: e.userId, isLeader: e.userId === leader.userId })),
         });
         await tx.roleAssignment.create({ data: { userId: leader.userId, role: "TEAM_LEADER", teamId: team.id } });
         await notify(tx, group.map((e) => e.userId), {
@@ -152,11 +152,11 @@ export async function moveStudent(u: CurrentUser, userId: string, toTeamId: stri
     const current = await tx.teamMember.findFirst({ where: { userId, leftAt: null, team: { internshipId: to.internshipId } } });
     if (current?.teamId === toTeamId) throw conflict("Student is already in this team");
     if (current) {
-      await tx.teamMember.update({ where: { id: current.id }, data: { leftAt: new Date(), isLeader: false } });
+      await tx.teamMember.update({ where: { id: current.id }, data: { leftAt: new Date(), activeUserId: null, isLeader: false } });
       await tx.roleAssignment.deleteMany({ where: { userId, teamId: current.teamId, role: "TEAM_LEADER" } });
       await activity(tx, { teamId: current.teamId, actorId: u.id, type: "team.member_left", message: "A member moved to another team" });
     }
-    await tx.teamMember.create({ data: { teamId: toTeamId, userId } });
+    await tx.teamMember.create({ data: { teamId: toTeamId, internshipId: to.internshipId, userId, activeUserId: userId } });
     await notify(tx, [userId], { category: "HISTORY", type: "team.assigned", title: `You've moved to Team ${to.name}`, link: "/workspace" });
     await activity(tx, { teamId: toTeamId, actorId: u.id, type: "team.member_joined", message: "A new member joined the team" });
     await audit(tx, { actorId: u.id, entity: "TeamMember", entityId: userId, action: "move", before: { teamId: current?.teamId }, after: { teamId: toTeamId } });

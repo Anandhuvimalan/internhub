@@ -23,7 +23,7 @@ export default async function Internships() {
   return (
     <>
       <PageHeader eyebrow="Programs" title="Internships & team allocation" subtitle="One engine for 1–4 month interns. Each enrollment keeps its own dates; teams are balanced within compatible durations." />
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           {internships.length ? (
             internships.map((i) => {

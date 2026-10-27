@@ -1,9 +1,8 @@
 import "server-only";
-import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { db, type Tx } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
-import { hashPassword } from "@/lib/auth";
+import { hashPassword, hashToken, newActivationToken } from "@/lib/session";
 import { enqueue, notify, audit } from "@/lib/events";
 import { badRequest, conflict, forbidden, notFound } from "@/lib/errors";
 import { addMonths, parseLocalDateTime } from "@/lib/format";
@@ -88,16 +87,22 @@ export async function admitLead(u: CurrentUser, leadId: string, raw: unknown) {
   const endDate = addMonths(startDate, input.durationMonths);
 
   return db.$transaction(async (tx) => {
-    const lead = await tx.lead.findUnique({ where: { id: leadId } });
-    if (!lead) throw notFound("Lead");
-    if (lead.status === "ADMITTED") throw conflict("Lead is already admitted");
+    // Claim the lead first with a conditional update: of two concurrent admissions, exactly
+    // one sees count === 1; the other gets a conflict instead of creating a second enrollment.
+    const claimed = await tx.lead.updateMany({ where: { id: leadId, status: { not: "ADMITTED" } }, data: { status: "ADMITTED" } });
+    if (!claimed.count) {
+      if (!(await tx.lead.count({ where: { id: leadId } }))) throw notFound("Lead");
+      throw conflict("Lead is already admitted");
+    }
+    const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
     const internship = await tx.internship.findUnique({ where: { id: input.internshipId } });
     if (!internship) throw notFound("Internship");
     if (endDate > addMonths(internship.endDate, 1))
       throw badRequest("This duration runs well past the internship batch end date — extend the batch first.");
 
     let user = await tx.user.findUnique({ where: { email: lead.email } });
-    const activationToken = randomBytes(24).toString("base64url");
+    // Only the hash is stored; the raw token travels once, in the welcome email.
+    const activation = !user || user.status === "INVITED" ? newActivationToken() : null;
     if (!user) {
       user = await tx.user.create({
         data: {
@@ -105,14 +110,18 @@ export async function admitLead(u: CurrentUser, leadId: string, raw: unknown) {
           name: lead.name,
           phone: lead.phone,
           status: "INVITED",
-          activationToken,
+          activationTokenHash: activation!.hash,
+          activationExpiresAt: activation!.expiresAt,
           studentCode: await nextStudentCode(tx, startDate.getUTCFullYear()),
         },
       });
-    } else if (!user.studentCode) {
+    } else {
       user = await tx.user.update({
         where: { id: user.id },
-        data: { studentCode: await nextStudentCode(tx, startDate.getUTCFullYear()) },
+        data: {
+          ...(user.studentCode ? {} : { studentCode: await nextStudentCode(tx, startDate.getUTCFullYear()) }),
+          ...(activation ? { activationTokenHash: activation.hash, activationExpiresAt: activation.expiresAt } : {}),
+        },
       });
     }
     // (compound unique can't match NULL teamId in Postgres, so check explicitly)
@@ -122,7 +131,7 @@ export async function admitLead(u: CurrentUser, leadId: string, raw: unknown) {
     const enrollment = await tx.enrollment.create({
       data: { userId: user.id, internshipId: internship.id, durationMonths: input.durationMonths, startDate, endDate },
     });
-    await tx.lead.update({ where: { id: lead.id }, data: { status: "ADMITTED", convertedUserId: user.id } });
+    await tx.lead.update({ where: { id: lead.id }, data: { convertedUserId: user.id } });
 
     await enqueue(
       tx,
@@ -135,7 +144,7 @@ export async function admitLead(u: CurrentUser, leadId: string, raw: unknown) {
         internship: internship.name,
         durationMonths: input.durationMonths,
         startDate: startDate.toISOString(),
-        activationToken: user.status === "INVITED" ? user.activationToken ?? activationToken : null,
+        activationToken: activation?.token ?? null, // worker redacts this after sending
       },
       `welcome:${user.id}:${internship.id}`,
     );
@@ -146,14 +155,32 @@ export async function admitLead(u: CurrentUser, leadId: string, raw: unknown) {
 
 // ── Account activation ──────────────────────────────────────────────
 
+/** Look up a still-valid activation link (by hash). Expired or used links → null. */
+export async function findActivation(token: string) {
+  const user = await db.user.findUnique({
+    where: { activationTokenHash: hashToken(token) },
+    select: { id: true, name: true, studentCode: true, activationExpiresAt: true },
+  });
+  if (!user || !user.activationExpiresAt || user.activationExpiresAt < new Date()) return null;
+  return user;
+}
+
+/**
+ * Single use: the hash is cleared in the same conditional update that sets the password, so
+ * a link replayed concurrently or later fails. Any older sessions are revoked.
+ */
 export async function activateAccount(token: string, password: string) {
   if (password.length < 10) throw badRequest("Password must be at least 10 characters");
-  const user = await db.user.findUnique({ where: { activationToken: token } });
-  if (!user) throw notFound("Activation link");
-  return db.user.update({
-    where: { id: user.id },
-    data: { passwordHash: await hashPassword(password), status: "ACTIVE", activationToken: null },
+  if (password.length > 200) throw badRequest("Password is too long");
+  const user = await findActivation(token);
+  if (!user) throw notFound("Activation link (it may have expired or already been used)");
+  const passwordHash = await hashPassword(password);
+  const done = await db.user.updateMany({
+    where: { id: user.id, activationTokenHash: hashToken(token) },
+    data: { passwordHash, status: "ACTIVE", activationTokenHash: null, activationExpiresAt: null, sessionVersion: { increment: 1 } },
   });
+  if (!done.count) throw notFound("Activation link (it may have expired or already been used)");
+  return db.user.findUniqueOrThrow({ where: { id: user.id } });
 }
 
 // ── Enrollment exceptions (extension, leave, withdrawal) ───────────
@@ -177,7 +204,7 @@ export async function updateEnrollment(
     const updated = await tx.enrollment.update({ where: { id: e.id }, data });
     if (change.status === "WITHDRAWN") {
       // close team membership but keep history
-      await tx.teamMember.updateMany({ where: { userId: e.userId, leftAt: null, team: { internshipId: e.internshipId } }, data: { leftAt: new Date() } });
+      await tx.teamMember.updateMany({ where: { userId: e.userId, leftAt: null, team: { internshipId: e.internshipId } }, data: { leftAt: new Date(), activeUserId: null } });
     }
     await audit(tx, { actorId: u.id, entity: "Enrollment", entityId: e.id, action: "update", before: e, after: updated });
     return updated;

@@ -24,10 +24,11 @@ export default async function Projects() {
   return (
     <>
       <PageHeader eyebrow="Delivery" title="Projects & templates" subtitle="Templates are reusable blueprints; assigning one creates an independent project instance for a team." />
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
         <Card title="All projects">
           {projects.length ? (
-            <table className="w-full text-sm">
+            <div className="-mx-1 overflow-x-auto px-1">
+<table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-muted">
                   <th className="py-2 font-medium">Project</th>
@@ -59,6 +60,7 @@ export default async function Projects() {
                 })}
               </tbody>
             </table>
+</div>
           ) : (
             <Empty title="No projects yet" />
           )}

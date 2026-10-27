@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { db } from "@/lib/db";
+import { findActivation } from "@/server/services/admissions";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { Field } from "@/components/ui";
 import { activateAction } from "../../actions";
@@ -17,7 +17,7 @@ export default function Activate(props: PageProps<"/activate/[token]">) {
 
 async function ActivateInner({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const user = await db.user.findUnique({ where: { activationToken: token }, select: { name: true, studentCode: true } });
+  const user = await findActivation(token); // null when unknown, expired or already used
   if (!user) notFound();
   return (
     <div className="grid min-h-screen place-items-center px-4">

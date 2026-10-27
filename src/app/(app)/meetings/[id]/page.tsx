@@ -67,10 +67,10 @@ export default async function MeetingPage(props: PageProps<"/meetings/[id]">) {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
           <Card title="Details">
-            <dl className="grid gap-4 text-sm sm:grid-cols-2">
+            <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-xs text-muted">Project</dt>
                 <dd>{m.project ? <Link href={`/projects/${m.project.id}`} className="link">{m.project.title}</Link> : "—"}</dd>
@@ -105,7 +105,7 @@ export default async function MeetingPage(props: PageProps<"/meetings/[id]">) {
                 <div>Demo: {m.presentation.demoUrl ? <a className="link" href={m.presentation.demoUrl} target="_blank" rel="noreferrer">{m.presentation.demoUrl}</a> : "—"}</div>
               </div>
               {(isTeamMember || supervisor) && m.status !== "COMPLETED" && (
-                <ActionForm action={presentationMaterialsAction} className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                <ActionForm action={presentationMaterialsAction} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
                   <input type="hidden" name="presentationId" value={m.presentation.id} />
                   <input type="hidden" name="meetingId" value={m.id} />
                   <Field label="Slides link">
@@ -182,7 +182,7 @@ export default async function MeetingPage(props: PageProps<"/meetings/[id]">) {
                   </Field>
                   <div>
                     <span className="label">Attendance</span>
-                    <div className="grid gap-1 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
                       {m.participants.map((p) => (
                         <label key={p.userId} className="flex items-center gap-2 text-sm">
                           <input type="checkbox" name="attendeeIds" value={p.userId} defaultChecked={p.rsvp !== "DECLINED"} /> {p.user.name}
@@ -194,7 +194,7 @@ export default async function MeetingPage(props: PageProps<"/meetings/[id]">) {
                     <div>
                       <span className="label">Follow-up tasks (added to the project)</span>
                       {[0, 1, 2].map((i) => (
-                        <div key={i} className="mb-2 grid gap-2 sm:grid-cols-[2fr_1fr_1fr]">
+                        <div key={i} className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1fr]">
                           <input name="fuTitle" className="input" placeholder={`Action item ${i + 1}`} />
                           <select name="fuOwner" className="input">
                             {m.team?.members.map((x) => (

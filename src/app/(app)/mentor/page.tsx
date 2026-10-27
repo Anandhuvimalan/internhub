@@ -18,7 +18,7 @@ export default async function Mentor() {
         actions={<Link href="/meetings/new" className="btn-primary">Schedule session</Link>}
       />
       {teams.length ? (
-        <div className="grid gap-5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {teams.map((t) => {
             const tasks = t.projects.flatMap((p) => p.tasks);
             const done = tasks.filter((x) => x.status === "APPROVED").length;
