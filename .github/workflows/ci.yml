@@ -68,6 +68,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internhub?schema=internship
       REDIS_URL: redis://localhost:6379
+      MFA_ENCRYPTION_KEY: "1111111111111111111111111111111111111111111111111111111111111111"
       SESSION_SECRET: ci-only-session-secret-not-used-anywhere-else-0123
       APP_URL: http://localhost:3000
       BASE_URL: http://localhost:3000
@@ -93,7 +94,7 @@ jobs:
           npm run db:seed
           # reset rate-limit counters so the browser run's logins aren't throttled by the HTTP run
           node -e "const R=require('ioredis');const r=new R(process.env.REDIS_URL);r.flushall().then(()=>r.quit())"
-          SHOTS_DIR=e2e-shots python scripts/ui-e2e.py
+          AXE_SOURCE_PATH=node_modules/axe-core/axe.min.js SHOTS_DIR=e2e-shots python scripts/ui-e2e.py
       - name: Upload screenshots and server log
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -129,3 +130,33 @@ jobs:
           test "$(docker inspect -f '{{.Config.User}}' app)" = "node"   # non-root
       - if: failure()
         run: docker logs app || true
+
+  providers:
+    name: Isolated storage, SMTP, scanner and browser
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: internhub_provider_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internhub_provider_test?schema=internship
+      REDIS_URL: redis://localhost:6379/0
+      AXE_SOURCE_PATH: node_modules/axe-core/axe.min.js
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: npm }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: "3.12" }
+      - run: npm ci --no-audit --no-fund
+      - run: pip install playwright==1.63.0 && python -m playwright install --with-deps chromium
+      - run: npm run test:providers:local
+      # Synthetic settings, signed URLs, mail capture and browser fixtures are never artifacts.

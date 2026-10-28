@@ -1,8 +1,7 @@
 import "server-only";
-import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
-import { promisify } from "node:util";
+import { createHash, randomBytes } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
-import bcrypt from "bcryptjs";
+import { burnPasswordCheck, hashPassword, needsRehash, verifyPassword } from "./password";
 import type { RoleKey } from "@prisma/client";
 import { db } from "./db";
 import { permissionsFor, STAFF_ROLES, type Permission } from "./permissions";
@@ -18,11 +17,7 @@ import { permissionsFor, STAFF_ROLES, type Permission } from "./permissions";
  */
 
 export const SESSION_TTL_SECONDS = 60 * 60 * 12;
-const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, keylen: number, opts: object) => Promise<Buffer>;
-
-// scrypt N=2^15, r=8, p=1 (~32 MiB, memory-hard). Stored as scrypt$<logN>$<r>$<p>$<salt>$<hash>.
-const SCRYPT = { logN: 15, r: 8, p: 1, keylen: 64 };
-const scryptOpts = (logN: number, r: number, p: number) => ({ N: 2 ** logN, r, p, maxmem: 128 * 2 ** logN * r * 2 });
+export { hashPassword, verifyPassword } from "./password";
 
 function secret() {
   const s = process.env.SESSION_SECRET;
@@ -31,31 +26,6 @@ function secret() {
 }
 
 // ── Passwords ────────────────────────────────────────────────────────
-
-export async function hashPassword(pw: string): Promise<string> {
-  const salt = randomBytes(16);
-  const hash = await scrypt(pw, salt, SCRYPT.keylen, scryptOpts(SCRYPT.logN, SCRYPT.r, SCRYPT.p));
-  return `scrypt$${SCRYPT.logN}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString("base64")}$${hash.toString("base64")}`;
-}
-
-/** Verifies scrypt hashes; also accepts legacy bcrypt hashes (callers should rehash). */
-export async function verifyPassword(pw: string, stored: string): Promise<boolean> {
-  if (stored.startsWith("$2")) return bcrypt.compare(pw, stored);
-  const [alg, logN, r, p, saltB64, hashB64] = stored.split("$");
-  if (alg !== "scrypt" || !hashB64) return false;
-  const expected = Buffer.from(hashB64, "base64");
-  const actual = await scrypt(pw, Buffer.from(saltB64, "base64"), expected.length, scryptOpts(+logN, +r, +p));
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-export const needsRehash = (stored: string) => !stored.startsWith(`scrypt$${SCRYPT.logN}$`);
-
-// Computed once; used to spend equal time when the email is unknown (no enumeration by timing).
-let dummyHash: Promise<string> | null = null;
-export async function burnPasswordCheck(pw: string) {
-  dummyHash ??= hashPassword("timing-equalizer-not-a-real-password");
-  await verifyPassword(pw, await dummyHash);
-}
 
 /**
  * Full credential check. Returns the user id on success, null otherwise. Always does one
@@ -87,8 +57,8 @@ export function newActivationToken() {
 
 // ── Session tokens ──────────────────────────────────────────────────
 
-export async function signSessionToken(userId: string, sessionVersion: number) {
-  return new SignJWT({ sv: sessionVersion })
+export async function signSessionToken(userId: string, sessionVersion: number, mfa = false) {
+  return new SignJWT({ sv: sessionVersion, mfa })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)
     .setIssuedAt()
@@ -118,16 +88,19 @@ export async function resolveSessionToken(token: string | undefined): Promise<Cu
   if (!token) return null;
   let userId: string;
   let sv: unknown;
+  let mfa: unknown;
   try {
     const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
     if (!payload.sub) return null;
     userId = payload.sub;
     sv = payload.sv;
+    mfa = payload.mfa;
   } catch {
     return null; // bad signature / expired / malformed — treated as signed out
   }
   const user = await db.user.findUnique({ where: { id: userId }, include: { roles: true, permissionGrants: true } });
   if (!user || user.status !== "ACTIVE" || sv !== user.sessionVersion) return null;
+  if (user.roles.some(r => STAFF_ROLES.includes(r.role)) && (!user.mfaSecret || mfa !== true)) return null;
   return toCurrentUser(user);
 }
 

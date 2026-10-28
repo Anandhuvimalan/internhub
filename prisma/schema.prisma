@@ -45,6 +45,9 @@ model User {
   activationTokenHash String?   @unique // SHA-256 of the emailed one-time token
   activationExpiresAt DateTime?
   sessionVersion      Int         @default(0) // bump to revoke every session (logout, password set)
+  mfaSecret String?
+  mfaLastStep BigInt @default(-1)
+  mfaRecovery String[] @default([])
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -460,6 +463,11 @@ model SubmissionFile {
   mimeType     String
   createdAt    DateTime @default(now())
 
+  scanStatus String @default("PENDING")
+  verifiedEtag String?
+  verifiedKey String?
+  uploadId String? @unique
+
   submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@schema("internship")
@@ -706,5 +714,32 @@ model AuditLog {
   actor User? @relation(fields: [actorId], references: [id])
 
   @@index([entity, entityId, createdAt])
+  @@schema("internship")
+}
+
+model LoginChallenge {
+  id String @id
+  userId String
+  sessionVersion Int
+  expiresAt DateTime
+  attempts Int @default(0)
+  consumed Boolean @default(false)
+  enrollmentSecret String?
+  replaceMfa Boolean @default(false)
+  @@index([expiresAt])
+  @@schema("internship")
+}
+
+model UploadAuthorization {
+  id String @id @default(cuid())
+  storageKey String @unique
+  userId String
+  taskId String
+  fileName String
+  sizeBytes Int
+  mimeType String
+  expiresAt DateTime
+  consumed Boolean @default(false)
+  @@index([expiresAt])
   @@schema("internship")
 }

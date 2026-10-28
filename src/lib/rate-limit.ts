@@ -9,6 +9,7 @@ import { AppError } from "./errors";
  * multiple app instances need the shared Redis state).
  */
 export const LIMITS = {
+  accountSecurity: { limit: 6, windowSec: 600 },
   login: { limit: 5, windowSec: 300 }, // per account
   loginIp: { limit: 60, windowSec: 300 }, // per IP — loose, many students share one Wi-Fi
   leadForm: { limit: 5, windowSec: 600 },

@@ -17,6 +17,7 @@ export default defineConfig({
     env: {
       DATABASE_URL: TEST_DB,
       SESSION_SECRET: "test-secret-test-secret-test-secret-0123456789",
+      MFA_ENCRYPTION_KEY: "11".repeat(32),
       APP_URL: "http://localhost:3000",
       REDIS_URL: "", // rate-limit tests use the in-memory path deterministically
     },

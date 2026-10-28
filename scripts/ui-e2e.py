@@ -10,7 +10,7 @@ each role's screens, keyboard focus, isolation, and a 390px no-horizontal-scroll
 Requires `psql` access to the same database (DATABASE_URL) to read the activation link.
 Never run against production.
 """
-import os, subprocess, time, re, json, sys
+import os, subprocess, time, re, json, sys, hmac, hashlib, base64, struct
 from playwright.sync_api import sync_playwright, expect
 BASE = os.environ.get("BASE_URL", "http://localhost:3000")
 OUT = os.environ.get("SHOTS_DIR", "e2e-shots"); os.makedirs(OUT, exist_ok=True)
@@ -29,16 +29,44 @@ def watch(page, label):
     page.on("console", lambda m: m.type == "error" and console_errors.append(f"{label}: {m.text[:160]}"))
     page.on("pageerror", lambda e: console_errors.append(f"{label}: pageerror {str(e)[:160]}"))
 
+def accessibility(page, label):
+    source = os.environ.get("AXE_SOURCE_PATH")
+    if not source:
+        return
+    page.add_script_tag(path=source)
+    violations = page.evaluate("async () => (await axe.run(document, {runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']}})).violations.map(v => ({id:v.id, impact:v.impact, targets:v.nodes.map(n => n.target)}))")
+    ok("axe WCAG A/AA " + label, not violations, json.dumps(violations))
+
+mfa_recovery = {}
+
 def login(ctx, email, label):
     p = ctx.new_page(); watch(p, label)
     p.goto(BASE + "/login")
     p.fill("input[name=email]", email); p.fill("input[name=password]", PW)
     p.click("button[type=submit]")
-    p.wait_for_url(re.compile(r"/(admin|workspace|mentor|reviews)"), timeout=20000)
+    p.wait_for_url(re.compile(r"/(admin|workspace|mentor|reviews|login/mfa)"), timeout=20000)
+    if "/login/mfa" in p.url:
+        p.locator("input[name=code]").wait_for()
+        accessibility(p, "admin verification")
+        if p.locator("code").count():
+            secret = p.locator("code").inner_text()
+            digest = hmac.new(base64.b32decode(secret), struct.pack(">Q", int(time.time()) // 30), hashlib.sha1).digest()
+            offset = digest[-1] & 15
+            code = str((struct.unpack(">I", digest[offset:offset+4])[0] & 0x7fffffff) % 1000000).zfill(6)
+        else:
+            code = mfa_recovery[email].pop()
+        p.fill("input[name=code]", code)
+        p.click("button[type=submit]")
+        if p.locator("code").count():
+            expect(p.get_by_role("status")).to_contain_text("recovery codes", timeout=15000)
+            mfa_recovery[email] = re.findall(r"\b[a-f0-9]{24}\b", p.get_by_role("status").inner_text())
+            ok("enrollment displays ten recovery codes once", len(mfa_recovery[email]) == 10)
+            p.get_by_role("link", name="Continue to administration").click()
+        p.wait_for_url(re.compile(r"/admin"), timeout=20000)
     return p
 
 with sync_playwright() as pw:
-    b = pw.chromium.launch()
+    b = pw.chromium.launch(executable_path=os.environ.get("CHROMIUM_BIN") or None)
     desk = dict(viewport={"width": 1280, "height": 860})
 
     # 1. Public landing + lead form (server action)
@@ -151,9 +179,50 @@ with sync_playwright() as pw:
         ctx = b.new_context(viewport={"width": 390, "height": 844}); p = login(ctx, email, "sweep")
         for path in paths:
             p.goto(BASE + path); p.wait_for_load_state("networkidle")
+            accessibility(p, "390px " + path.split("?")[0])
             o = p.evaluate("document.documentElement.scrollWidth - window.innerWidth")
             ok(f"390px no horizontal scroll: {path.split('?')[0][:40]} ({email.split('@')[0]})", o <= 0, o)
         ctx.close()
+    # Completion administration surfaces, keyboard navigation and WCAG A/AA audit.
+    ctx = b.new_context(**desk); p = login(ctx, "superadmin@internhub.dev", "super-admin")
+    p.goto(BASE + "/admin/staff")
+    email = f"staff-{int(time.time())}@test.dev"
+    form = p.locator("form").filter(has=p.get_by_role("button", name="Create staff account"))
+    form.get_by_label("Name", exact=True).fill("Browser Mentor")
+    form.get_by_label("Email", exact=True).fill(email)
+    form.get_by_label("Initial password", exact=True).fill("browser-initial-password")
+    form.get_by_label("Roles", exact=True).select_option("MENTOR")
+    form.get_by_role("button", name="Create staff account").click()
+    expect(form.get_by_role("status")).to_contain_text("Staff account saved")
+    ok("super-admin creates a mentor through staff form", psql(f"select count(*) from internship.\"User\" where email='{email}'") == "1")
+    p.goto(BASE + "/admin/templates")
+    title = f"Browser template {int(time.time())}"
+    p.get_by_label("Template title", exact=True).first.fill(title)
+    p.get_by_role("button", name="Create template", exact=True).click()
+    expect(p.get_by_role("status")).to_contain_text("Template saved")
+    ok("structured phase/task template authoring saves", p.get_by_text("Edit " + title, exact=True).count() == 1)
+    axe_path = os.environ.get("AXE_SOURCE_PATH")
+    if axe_path:
+        for width in [360, 768, 1280]:
+            p.set_viewport_size({"width": width, "height": 900})
+            for path in ["/admin", "/admin/staff", "/admin/templates", "/admin/projects"]:
+                p.goto(BASE + path); p.wait_for_load_state("networkidle")
+                accessibility(p, f"{width}px {path}")
+                ok(f"completion screens fit {width}px {path}", p.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+                if width == 360 and path == "/admin/staff":
+                    p.get_by_text("Menu", exact=True).click()
+                    mobile = p.get_by_role("navigation", name="Mobile navigation")
+                    ok("mobile menu exposes staff, templates and sign out", mobile.get_by_role("link", name="Staff", exact=True).is_visible() and mobile.get_by_role("link", name="Templates", exact=True).is_visible() and mobile.get_by_role("button", name="Sign out").is_visible())
+                if path == "/admin/templates": p.screenshot(path=f"{OUT}/templates-{width}.png", full_page=True)
+            public_ctx = b.new_context(viewport={"width": width, "height": 900})
+            public_page = public_ctx.new_page()
+            for path in ["/", "/login"]:
+                public_page.goto(BASE + path); public_page.wait_for_load_state("networkidle")
+                accessibility(public_page, f"{width}px public {path}")
+            public_ctx.close()
+    else:
+        print("Accessibility audit not run: set AXE_SOURCE_PATH to installed axe.min.js")
+    ctx.close()
     b.close()
 
 print("\nconsole errors:", console_errors or "none")

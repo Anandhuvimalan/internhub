@@ -8,3 +8,6 @@ e2e-shots
 coverage
 dump.rdb
 *.log
+
+.local-verification
+.local-load

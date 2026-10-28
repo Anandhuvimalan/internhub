@@ -4,10 +4,10 @@ import { useActionState, useEffect, useRef, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/lib/api";
 
-export function SubmitButton({ children, variant = "primary", pendingLabel, name, value }: { children: ReactNode; variant?: "primary" | "ghost" | "danger"; pendingLabel?: string; name?: string; value?: string }) {
+export function SubmitButton({ children, variant = "primary", pendingLabel, name, value, disabled = false }: { children: ReactNode; variant?: "primary" | "ghost" | "danger"; pendingLabel?: string; name?: string; value?: string; disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" name={name} value={value} disabled={pending} className={`btn-${variant}`}>
+    <button type="submit" name={name} value={value} disabled={pending || disabled} className={`btn-${variant}`}>
       {pending ? pendingLabel ?? "Saving…" : children}
     </button>
   );

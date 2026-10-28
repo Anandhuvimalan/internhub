@@ -17,9 +17,10 @@ export { hashPassword, verifyPassword, homePathFor, type CurrentUser } from "./s
 export const SESSION_COOKIE = "ih_session";
 
 /** Issue a fresh session cookie (a new token on every login/privilege change). */
-export async function createSession(userId: string) {
+export async function createSession(userId: string, mfaVersion?: number) {
   const { sessionVersion } = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { sessionVersion: true } });
-  const token = await signSessionToken(userId, sessionVersion);
+  if (mfaVersion !== undefined && mfaVersion !== sessionVersion) throw unauthorized();
+  const token = await signSessionToken(userId, sessionVersion, mfaVersion !== undefined);
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -52,4 +53,8 @@ export async function requirePermission(p: Permission): Promise<CurrentUser> {
   const u = await requireUser();
   if (!u.can(p)) throw forbidden();
   return u;
+}
+
+export async function setLoginChallenge(token: string) {
+  (await cookies()).set("ih_challenge", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 300 });
 }

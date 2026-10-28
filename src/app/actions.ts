@@ -1,4 +1,7 @@
 "use server";
+import { beginLogin } from "@/server/mfa";
+import { setLoginChallenge } from "@/lib/auth";
+
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -46,6 +49,8 @@ export async function loginAction(_: ActionState, fd: FormData): Promise<ActionS
     await checkRateLimit("loginIp", `ip:${await ip()}`);
     const userId = await checkCredentials(email, password); // constant-ish time, rehashes legacy
     if (!userId) return { error: "Email or password is incorrect" };
+    const challenge = await beginLogin(userId);
+    if (challenge) { await setLoginChallenge(challenge); redirect("/login/mfa"); }
     await createSession(userId);
     const user = await db.user.findUniqueOrThrow({ where: { id: userId }, include: { roles: true, permissionGrants: true } });
     home = homePathFor(toCurrentUser(user));

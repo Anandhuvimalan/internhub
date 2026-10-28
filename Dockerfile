@@ -18,9 +18,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # ── all dependencies (locked) + generated Prisma client ─────────────
 FROM base AS deps
-COPY package.json package-lock.json ./
-COPY prisma ./prisma
-RUN npm ci --no-audit --no-fund
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node prisma ./prisma
+# Optional public CA bundle for managed build proxies; never copied into an image layer.
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
+    npm ci --strict-ssl=true --no-audit --no-fund
 
 # ── production build ───────────────────────────────────────────────
 FROM deps AS builder
@@ -33,6 +36,9 @@ RUN npm run build
 
 # ── migrate (one-off job) ──────────────────────────────────────────
 FROM deps AS migrate
+COPY --chown=node:node scripts/bootstrap-admin.ts ./scripts/bootstrap-admin.ts
+COPY --chown=node:node src/server/bootstrap.ts ./src/server/bootstrap.ts
+COPY --chown=node:node src/lib/db.ts src/lib/errors.ts src/lib/password.ts ./src/lib/
 USER node
 CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
 
@@ -41,6 +47,8 @@ FROM deps AS worker
 ENV NODE_ENV=production
 COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node src/emails ./src/emails
+COPY --chown=node:node src/lib/db.ts src/lib/errors.ts src/lib/storage-provider.ts src/lib/malware.ts src/lib/archive.ts ./src/lib/
+COPY --chown=node:node src/server/scan-upload.ts ./src/server/scan-upload.ts
 USER node
 # SIGTERM is handled: finishes the current batch, then exits.
 CMD ["node_modules/.bin/tsx", "scripts/worker.ts"]

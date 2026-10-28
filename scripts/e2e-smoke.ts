@@ -1,3 +1,4 @@
+import { totp } from "../src/lib/totp";
 /**
  * End-to-end smoke test over real HTTP against a running server with SEEDED demo data.
  *
@@ -44,8 +45,10 @@ class Client {
     });
     const set = res.headers.get("set-cookie");
     if (set) {
-      const m = /ih_session=([^;]*)/.exec(set);
-      if (m) this.cookie = m[1] ? `ih_session=${m[1]}` : "";
+      for (const name of ["ih_session", "ih_challenge"]) {
+        const m = new RegExp(`${name}=([^;]*)`).exec(set);
+        if (m) this.cookie = [...this.cookie.split("; ").filter(x => x && !x.startsWith(name + "=")), ...(m[1] ? [`${name}=${m[1]}`] : [])].join("; ");
+      }
     }
     const text = await res.text();
     let json: Body | null = null;
@@ -53,7 +56,15 @@ class Client {
     return { status: res.status, json, text, headers: res.headers };
   }
   async login(email: string) {
-    const r = await this.req("POST", "/api/v1/auth/session", { email, password: PASSWORD });
+    let r = await this.req("POST", "/api/v1/auth/session", { email, password: PASSWORD });
+    if (r.status === 202) {
+      check(`${this.label} password alone grants no admin session`, (await this.req("GET", "/api/v1/me/dashboard")).status === 401);
+      const info = await this.req("GET", "/api/v1/auth/mfa");
+      const secret = info.json?.secret;
+      if (typeof secret !== "string") throw new Error("HTTP E2E requires freshly seeded isolated admin for MFA enrollment");
+      r = await this.req("POST", "/api/v1/auth/mfa", { code: totp(secret) });
+      check(`${this.label} MFA challenge cannot replay`, (await this.req("POST", "/api/v1/auth/mfa", { code: totp(secret) })).status === 401);
+    }
     check(`${this.label} signs in`, r.status === 200, r);
     return r;
   }

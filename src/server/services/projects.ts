@@ -27,6 +27,7 @@ export async function assignTemplate(u: CurrentUser, raw: unknown) {
   const start = parseLocalDateTime(input.startDate);
 
   return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "internship"."ProjectTemplate" WHERE id = ${input.templateId} FOR SHARE`;
     const template = await tx.projectTemplate.findUnique({
       where: { id: input.templateId },
       include: { phases: { orderBy: { order: "asc" }, include: { tasks: true } } },

@@ -1,0 +1,105 @@
+import { it, expect, vi, beforeEach } from "vitest";
+import { db } from "@/lib/db";
+import { authorizeUpload, submitTask } from "@/server/services/reviews";
+import { downloadFile } from "@/server/file-download";
+import { scanUpload } from "@/server/scan-upload";
+import { objectMetadata, boundObject, presignUpload, promoteClean } from "@/lib/storage-provider";
+import { scanBytes } from "@/lib/malware";
+import { asUser, makeTeam, makeProjectWithTask, expectStatus, makeUser } from "../factories";
+vi.mock("@/lib/storage-provider", async original => ({ ...await original<object>(), objectMetadata: vi.fn(), boundObject: vi.fn(), presignUpload: vi.fn(), promoteClean: vi.fn() }));
+vi.mock("@/lib/malware", () => ({ scanBytes: vi.fn() }));
+beforeEach(() => {
+  vi.mocked(presignUpload).mockResolvedValue("https://storage.invalid/isolated-test");
+  vi.mocked(objectMetadata).mockResolvedValue({ etag: '"original"', sizeBytes: 3, mimeType: "text/plain" });
+  vi.mocked(scanBytes).mockResolvedValue("CLEAN");
+  vi.mocked(promoteClean).mockImplementation(async id => ({ key: `verified/${id}/isolated`, etag: '"clean"' }));
+  vi.mocked(boundObject).mockImplementation(async (_key, etag) => ({ ETag: etag, ContentLength: 3, Body: { async *[Symbol.asyncIterator]() { yield Buffer.from("abc"); }, transformToWebStream: () => new ReadableStream({ start(c) { c.enqueue(Buffer.from("abc")); c.close(); } }) } } as never));
+});
+async function fixture(mimeType = "text/plain") {
+  const { team, students } = await makeTeam(1);
+  const { task } = await makeProjectWithTask(team.id, students[0].id);
+  const u = await asUser(students[0].id);
+  const file = { fileName: "result.txt", mimeType, sizeBytes: 3 };
+  const grant = await authorizeUpload(u, task.id, file);
+  return { u, task, file: { ...file, storageKey: grant.storageKey } };
+}
+it("persists authorization, rejects forged/expired metadata and missing objects", async () => {
+  const { u, task, file } = await fixture();
+  await expectStatus(submitTask(u, task.id, { files: [{ ...file, storageKey: file.storageKey + "forged" }] }), 400);
+  await expectStatus(submitTask(u, task.id, { files: [{ ...file, sizeBytes: 4 }] }), 400);
+  vi.mocked(objectMetadata).mockResolvedValueOnce({ etag: '"x"', sizeBytes: 4, mimeType: "text/plain" });
+  await expectStatus(submitTask(u, task.id, { files: [file] }), 400);
+  vi.mocked(objectMetadata).mockRejectedValueOnce(new Error("missing object"));
+  await expect(submitTask(u, task.id, { files: [file] })).rejects.toThrow("missing object");
+  await db.uploadAuthorization.update({ where: { storageKey: file.storageKey }, data: { expiresAt: new Date(0) } });
+  await expectStatus(submitTask(u, task.id, { files: [file] }), 400);
+  expect(await db.submission.count({ where: { taskId: task.id } })).toBe(0);
+});
+it("queues scanning, refuses downloads on failure, retries safely and binds downloads to ETag", async () => {
+  const { u, task, file } = await fixture();
+  const sub = await submitTask(u, task.id, { files: [file] });
+  const stored = await db.submissionFile.findFirstOrThrow({ where: { submissionId: sub.id } });
+  expect(await db.outboxEvent.count({ where: { dedupeKey: `upload_scan:${stored.id}` } })).toBe(1);
+  expect((await db.uploadAuthorization.findUniqueOrThrow({ where: { storageKey: file.storageKey } })).consumed).toBe(true);
+  await expectStatus(downloadFile(u, stored.id), 409);
+  vi.mocked(scanBytes).mockRejectedValueOnce(new Error("scanner offline"));
+  await expect(scanUpload(stored.id)).rejects.toThrow("scanner offline");
+  await expectStatus(downloadFile(u, stored.id), 409);
+  await scanUpload(stored.id);
+  expect((await downloadFile(u, stored.id)).headers.get("content-type")).toBe("application/octet-stream");
+  expect(boundObject).toHaveBeenLastCalledWith(`verified/${stored.id}/isolated`, '"clean"');
+  expect(promoteClean).toHaveBeenCalledWith(stored.id, Buffer.from("abc"));
+  await expectStatus(downloadFile(await asUser((await makeUser()).id), stored.id), 404);
+  vi.mocked(boundObject).mockRejectedValueOnce(new Error("PreconditionFailed"));
+  await expect(downloadFile(u, stored.id)).rejects.toThrow("PreconditionFailed");
+});
+it("quarantines malware and refuses a changed object", async () => {
+  const { u, task, file } = await fixture();
+  const sub = await submitTask(u, task.id, { files: [file] });
+  const stored = await db.submissionFile.findFirstOrThrow({ where: { submissionId: sub.id } });
+  vi.mocked(boundObject).mockResolvedValueOnce({ ETag: '"changed"', ContentLength: 3 } as never);
+  await expect(scanUpload(stored.id)).rejects.toThrow("Verified upload changed");
+  vi.mocked(scanBytes).mockResolvedValueOnce("INFECTED");
+  await scanUpload(stored.id);
+  await expectStatus(downloadFile(u, stored.id), 409);
+  const calls = vi.mocked(scanBytes).mock.calls.length;
+  await scanUpload(stored.id);
+  expect(vi.mocked(scanBytes).mock.calls.length).toBe(calls);
+});
+it("operators reconcile historical objects into the normal scan queue without bypassing scans", async () => {
+  const { reconcileHistoricalFile, retryFailedJob, operationsOverview } = await import("@/server/operations");
+  const { u, task, file } = await fixture();
+  const sub = await db.submission.create({ data: { taskId: task.id, submittedById: u.id, version: 1 } });
+  const historical = await db.submissionFile.create({ data: { ...file, submissionId: sub.id } });
+  const operator = await asUser((await makeUser(["SUPER_ADMIN"])).id);
+  await expectStatus(reconcileHistoricalFile(u, historical.id), 403);
+  vi.mocked(objectMetadata).mockResolvedValueOnce({ etag: '"mismatch"', sizeBytes: 4, mimeType: "text/plain" });
+  await expectStatus(reconcileHistoricalFile(operator, historical.id), 409);
+  await reconcileHistoricalFile(operator, historical.id);
+  const verified = await db.submissionFile.findUniqueOrThrow({ where: { id: historical.id } });
+  expect(verified.scanStatus).toBe("PENDING"); expect(verified.verifiedEtag).toBe('"original"');
+  await expectStatus(downloadFile(u, historical.id), 409);
+  const job = await db.outboxEvent.findUniqueOrThrow({ where: { dedupeKey: `historical_scan:${historical.id}` } });
+  await db.outboxEvent.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 6 } });
+  await expectStatus(retryFailedJob(u, job.id), 403);
+  const result = await Promise.allSettled([retryFailedJob(operator, job.id), retryFailedJob(operator, job.id)]);
+  expect(result.filter(r => r.status === "fulfilled")).toHaveLength(1);
+  expect((await db.outboxEvent.findUniqueOrThrow({ where: { id: job.id } })).attempts).toBe(0);
+  await scanUpload(historical.id);
+  expect((await db.submissionFile.findUniqueOrThrow({ where: { id: historical.id } })).scanStatus).toBe("CLEAN");
+  const overview = await operationsOverview(operator);
+  expect(JSON.stringify(overview)).not.toContain("activationToken");
+});
+
+it("rejects an unscannable archive before a clean scanner verdict can promote it", async () => {
+  const { u, task, file } = await fixture("application/zip");
+  vi.mocked(objectMetadata).mockResolvedValueOnce({ etag: '\"original\"', sizeBytes: 3, mimeType: "application/zip" });
+  const submitted = await submitTask(u, task.id, { files: [file] });
+  const stored = await db.submissionFile.findFirstOrThrow({ where: { submissionId: submitted.id } });
+  const calls = vi.mocked(scanBytes).mock.calls.length;
+  await scanUpload(stored.id);
+  expect(vi.mocked(scanBytes).mock.calls.length).toBe(calls);
+  const after = await db.submissionFile.findUniqueOrThrow({ where: { id: stored.id } });
+  expect(after.scanStatus).toBe("REJECTED"); expect(after.verifiedKey).toBeNull();
+  await expectStatus(downloadFile(u, stored.id), 409);
+});

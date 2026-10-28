@@ -101,7 +101,7 @@ export default async function TaskPage(props: PageProps<"/tasks/[id]">) {
                       {s.githubUrl && <a href={s.githubUrl} target="_blank" rel="noreferrer" className="link block truncate">⌥ {s.githubUrl}</a>}
                       {s.linkUrl && <a href={s.linkUrl} target="_blank" rel="noreferrer" className="link block truncate">↗ {s.linkUrl}</a>}
                       {s.files.map((f) => (
-                        <a key={f.id} href={`/api/v1/files/${f.id}`} className="link block">📎 {f.fileName}</a>
+                        <div key={f.id}>{f.scanStatus === "CLEAN" ? <a href={`/api/v1/files/${f.id}`} className="link block">📎 {f.fileName}</a> : <span className="block text-sm text-muted">{f.fileName} · {f.scanStatus === "INFECTED" ? "Blocked by malware scan" : f.scanStatus === "REJECTED" ? "Archive could not be verified safely; submit individual files" : "Verification and scan pending"}</span>}</div>
                       ))}
                       {s.note && <p className="text-ink-2">{s.note}</p>}
                     </div>

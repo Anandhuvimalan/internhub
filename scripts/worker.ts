@@ -11,6 +11,7 @@
  *   if the provider is down, events simply wait — the app keeps working.
  */
 import { PrismaClient, type OutboxEvent } from "@prisma/client";
+import { scanUpload } from "../src/server/scan-upload";
 import nodemailer from "nodemailer";
 import * as tpl from "../src/emails/templates";
 
@@ -21,7 +22,7 @@ const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 5000);
 const EMAIL_PER_MINUTE = Number(process.env.EMAIL_PER_MINUTE ?? 60);
 const FROM = process.env.EMAIL_FROM ?? "InternHub <no-reply@internhub.local>";
 
-const transport = process.env.SMTP_URL ? nodemailer.createTransport(process.env.SMTP_URL) : null;
+const transport = process.env.SMTP_URL ? nodemailer.createTransport({ url: process.env.SMTP_URL, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 30000, dnsTimeout: 10000 }) : null;
 let sentThisMinute = 0;
 setInterval(() => (sentThisMinute = 0), 60_000).unref();
 
@@ -34,6 +35,7 @@ async function sendMail(to: string, mail: { subject: string; html: string }) {
   if (sentThisMinute >= EMAIL_PER_MINUTE) throw new Throttled("email rate budget exhausted");
   sentThisMinute++;
   if (!transport) {
+    if (process.env.NODE_ENV === "production") throw new Error("SMTP is not configured");
     console.log(`[mail:dev] → ${to} | ${mail.subject}`);
     return;
   }
@@ -52,6 +54,7 @@ function redact(payload: OutboxEvent["payload"]) {
 }
 
 const handlers: Record<string, Handler> = {
+  "upload.scan": async (_e, p) => scanUpload(String(p.fileId)),
   "email.lead_ack": async (_e, p) => sendMail(String(p.to), tpl.leadAck({ name: String(p.name) })),
 
   "email.welcome": async (_e, p) =>
@@ -144,15 +147,17 @@ async function processOne(e: OutboxEvent) {
         status: dead ? "FAILED" : "PENDING",
         attempts: throttled ? { decrement: 1 } : undefined,
         availableAt: new Date(Date.now() + delayMs),
-        lastError: String((err as Error).message ?? err).slice(0, 500),
+        lastError: e.type === "upload.scan" ? "Upload scan failed; download remains blocked" : "Background delivery failed; check provider configuration",
       },
     });
-    if (!throttled) console.error(`[worker] ${e.type} ${e.id} failed (attempt ${e.attempts})${dead ? " → dead letter" : ""}:`, (err as Error).message);
+    if (!throttled) console.error(`[worker] ${e.type} ${e.id} failed (attempt ${e.attempts})${dead ? " → dead letter" : ""}:`, (e.type === "upload.scan" ? "Upload scan failed" : err instanceof Error ? err.name : "unknown"));
   }
 }
 
 /** Events stuck in PROCESSING (worker crashed) go back to the queue. */
 async function recoverStuck() {
+  const expired = await db.loginChallenge.findMany({ where: { expiresAt: { lt: new Date(Date.now() - 86400000) } }, select: { id: true }, take: 500 });
+  if (expired.length) await db.loginChallenge.deleteMany({ where: { id: { in: expired.map(c => c.id) } } });
   await db.outboxEvent.updateMany({
     where: { status: "PROCESSING", availableAt: { lt: new Date(Date.now() - 10 * 60_000) } },
     data: { status: "PENDING" },
@@ -175,6 +180,6 @@ async function main() {
 
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => (running = false));
 main().catch((e) => {
-  console.error(e);
+  console.error("Worker stopped unexpectedly", e instanceof Error ? e.name : "unknown");
   process.exit(1);
 });

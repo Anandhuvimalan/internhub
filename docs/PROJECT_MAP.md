@@ -70,3 +70,16 @@ Index only — code wins on conflict. Update touched entries per slice; never re
 - `tests/integration/{session,access,reviews,teams-admissions,meetings-closure}.test.ts` — real-DB behavior incl. races. [E]
 - `scripts/e2e-smoke.ts` — HTTP E2E vs running server (`npm run test:e2e`). [E]
 - `scripts/ui-e2e.py` — Playwright browser E2E + 390px sweep. [E]
+
+## Cloud completion additions
+- `src/server/services/administration.ts`, `src/app/admin-actions.ts`, `(app)/admin/{staff,templates}` and `components/template-editor.tsx` — staff access and structured template authoring; audited, bounded, schedule validated. [E]
+- `src/lib/totp.ts`, `src/server/mfa.ts`, `login/mfa`, `api/v1/auth/mfa` — AES-GCM TOTP, password-bound challenges, attempt/replay locking and single-use recovery. `session.ts` enforces enrolled MFA for admins. [E]
+- `src/lib/storage-provider.ts` — Node-only provider implementation usable by worker; `storage.ts` is the server-only application facade. `src/server/scan-upload.ts`, `lib/malware.ts`, `server/file-download.ts` — bounded scan and ETag-bound download. [E]
+- `scripts/database-backup.py`, `scripts/load/readiness.js`, `ops/clamd.conf`, `docs/RELEASE_CHECKLIST.md` — isolated operational tools and external release gates. [E]
+- `tests/integration/{administration-mfa,uploads}.test.ts`, `tests/unit/mfa-scanner.test.ts` — admin/session/template/upload boundaries and RFC/INSTREAM protocol checks. [E]
+
+- `src/server/account-security.ts`, `(app)/settings/security`, `api/v1/auth/password` — current-password rotation and all-session revocation; `mfa.ts` also supports encrypted replacement-device challenges. [E]
+- `src/server/operations.ts`, `(app)/admin/operations`, `scripts/check-operations.ts` — settings-gated retry and historical-file verification, bounded aggregate probe. [E]
+- `src/lib/archive.ts` — independent bounded ZIP/OpenXML validation before scanner; malformed/encrypted/nested archives fail closed. [E]
+- `scripts/verification/{setup,run,providers,recovery}.ts`, `browser.py`, `docker-compose.verify.yml` — disposable real provider/browser and encrypted full-system rehearsal. `docs/LOCAL_VERIFICATION.md` contains safe prerequisites/procedures. [E]
+- `scripts/load/{prepare.ts,authenticated.js}` — empty local synthetic realistic fixture and bounded signed-session dashboard scenarios. [E]

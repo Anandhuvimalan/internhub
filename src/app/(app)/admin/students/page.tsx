@@ -68,14 +68,14 @@ export default async function Students(props: PageProps<"/admin/students">) {
                     <td className="px-4 py-2.5">
                       <form action={enrollmentAction} className="flex gap-1">
                         <input type="hidden" name="enrollmentId" value={e.id} />
-                        <select name="status" className="input w-auto py-1 text-xs" defaultValue="">
+                        <select aria-label={`Enrollment status for ${e.user.name}`} name="status" className="input w-auto py-1 text-xs" defaultValue="">
                           <option value="">—</option>
                           <option value="ACTIVE">Active</option>
                           <option value="ON_LEAVE">On leave</option>
                           <option value="WITHDRAWN">Withdrawn</option>
                           <option value="COMPLETED">Completed</option>
                         </select>
-                        <select name="extendMonths" className="input w-auto py-1 text-xs" defaultValue="0">
+                        <select aria-label={`Extend enrollment for ${e.user.name}`} name="extendMonths" className="input w-auto py-1 text-xs" defaultValue="0">
                           <option value="0">No ext.</option>
                           <option value="1">+1 mo</option>
                           <option value="2">+2 mo</option>

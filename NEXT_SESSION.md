@@ -1,38 +1,63 @@
 # Next Session — Start Here
 
-Overwritten every slice. History: CHANGELOG.md, ROADMAP.md Progress Log.
-Workflow: build-web-app skill (github.com/Anandhuvimalan/build-web-app) — read its SKILL.md first.
+## Read in order
 
-## Cold-start reading order
-1. ROADMAP.md (slice table + Progress Log — check last CI result recorded there)
-2. docs/RISKS.md (open items gate production)
-3. docs/features/S2-delivery.md, docs/features/S1-hardening-and-verification.md (evidence; **not run** rows)
-4. docs/PROJECT_MAP.md → open only files named for the slice
+1. docs/features/cloud-completion.md — implementation, actual Cloud evidence and external gates.
+2. docs/LOCAL_VERIFICATION.md, docs/RELEASE_CHECKLIST.md and docs/RISKS.md — safe tooling and release requirements.
+3. docs/REQUIREMENTS_COVERAGE.md and ROADMAP.md — current coverage and deferred platform work.
+4. docs/PROJECT_MAP.md — open only relevant modules.
 
-## Last completed slice
-S2 — Docker, CI, README, `npm start` fix. See docs/features/S2-delivery.md.
+Workflow: https://github.com/Anandhuvimalan/build-web-app (SKILL.md). Respect AGENTS.md
+and installed Next.js guides. Preserve uncommitted work. Never mark unrun checks passing.
 
-## Next slice to implement
-Choose with product owner (each needs input/infrastructure from them):
-- S4 Admin MFA (R-2) — needs decision TOTP vs IdP. Can start alone if TOTP chosen.
-- S3 Staging + k6 load test (R-1) — needs a staging host.
-- Accessibility audit (R-11) — can run now: axe-core via Playwright over the same screens as `scripts/ui-e2e.py`.
-- S5 Upload verification (R-7) — needs R2 credentials.
-If no input available, do the accessibility audit (fully local).
+## Source state
 
-## How to verify locally
-- Services: Postgres 16 localhost:5432, Redis 6379. `npm test` auto-creates `internhub_test`.
-- `npm run lint && npm run typecheck && npm test`; `npm run db:seed && npm run build && npm start`; then `npm run test:e2e`; reseed + flush Redis; `python3 scripts/ui-e2e.py`.
-- Docker image builds cannot be verified in the Claude sandbox (egress blocks Debian mirrors); rely on CI `docker` job.
-- Never chain a check into `| tail` before `&&` — the exit code is lost (S1 lint slip). Check `$?` or let the command's own exit code gate.
+Original clean HEAD: 4edc3d074801fd5de1daf91508b5d3cf18f5b217. Supplied 14-file patch
+checked/applied without conflicts. Completion source is prepared for the user-authorized GitHub branch
+`codex/internhub-completion`; no application publication or live data writes. Existing stack and MVP scope retained.
 
-## Standing decisions this session should not re-litigate
-- ADR-0001 monolith/`internship` schema; ADR-0002 Postgres outbox; ADR-0003 in-app sessions (IdP later).
-- Cache Components on; page denials = 200 + 404 UI; APIs real statuses. CSP no nonce.
-- CAS state transitions + unique constraints. Logout revokes all sessions.
-- `/api/live` liveness, `/api/health` readiness. APP_URL/S3_ENDPOINT/ALLOWED_ORIGINS are build-time.
-- CI runs the same npm scripts as developers.
+Implemented: non-destructive first-admin bootstrap; combinable staff roles/status/revocation;
+structured phase/task templates; mandatory encrypted admin TOTP/recovery; password rotation
+and lost-device authenticator replacement; exact persisted upload grants/HEAD; fail-closed
+outbox scanning, independent ZIP expansion validation, per-scan signature freshness and private
+promotion/downloads; operator retry/historical reconciliation/probe; accessibility/mobile fixes;
+SMTP deadlines/retry correctness; isolated provider/browser/load/encrypted recovery tooling.
 
-## Open questions / gaps flagged, not yet resolved
-- Product owner sign-off on proposed risk acceptances R-5, R-8, R-10.
-- Admin MFA method (R-2); existing student-platform identity access (R-6); hosting target for staging/production.
+## Evidence
+
+Cloud locked install/Prisma retry and original 66 tests independently passed. Current fresh
+locked install (477 packages), lint/typecheck and 83 tests/12 files passed. Production build
+43 routes passed after a scoped patched deepmerge-ts override for Prisma config; production dependency audit zero advisories. Main HTTP35/browser102 checks rerun and passed; complete disposable provider HTTP/worker47 and
+browser12 passed with actual local S3/SMTP/ClamAV and new security/operations screens.
+Real scanner outage/retry passed. EICAR quarantined. Oversized ZIP rejected independently
+of ClamAV (INSTREAM itself returned CLEAN for that fixture). Source overwrite cannot replace
+promoted bytes. Encrypted DB/ten objects/runtime-key restore passed admin MFA and private
+byte-exact download. Authenticated realistic-fixture k6 steady40/burst100/400sessions passed
+with zero errors/drops and p95 160.50/18.95/34.09ms. First400 run overlapped build and failed;
+recorded honestly. Local evidence does not establish production capacity/recovery.
+Final app/migration/worker images built; read-only non-root app health/login/dashboard passed, and container migration/bootstrap creation plus idempotency passed. Read-only non-root worker --once and the zero-backlog operations probe passed. See cloud-completion.md for limitations.
+
+## Cloud runtime (synthetic only)
+
+Source /workspace/.internhub-tools/activate.sh; start supplied services with
+/workspace/.internhub-tools/services.sh. PostgreSQL 55432, Redis56379. The activation script
+clears provider variables; do not accidentally overwrite configured isolated values.
+User explicitly authorized temporary isolated S3/SMTP/ClamAV services. Reproducible runner:
+DATABASE_URL must name a loopback *_provider_test DB; set CHROMIUM_BIN=/usr/bin/chromium,
+AXE_SOURCE_PATH=node_modules/axe-core/axe.min.js. See LOCAL_VERIFICATION.md for prerequisites.
+It generates ignored private settings and handles Compose/app cleanup. Never shell-evaluate
+generated dotenv. Retain proxy/CA; socket commands need sandbox network permission.
+Build-time S3_ENDPOINT controls browser CSP and requires rebuild when changed.
+Task MFA key and private test artifacts stay outside Git. No Windows .env transferred.
+PostgreSQL client major must match server (16). Use only empty disposable restore targets.
+
+## Remaining external work
+
+- Configure production hosting/edge, actual provider accounts, Redis/SMTP, telemetry/alert delivery,
+  signature updates and retention; no deployment authorized. Verify live R2/Mux CDN/SMTP.
+- Historical production-file inventory/reconciliation, owner-approved source/orphan retention,
+  production backup/PITR/RTO/RPO and sustained representative staging acceptance.
+- Real-device/manual screen-reader review, existing-platform identity contract/access and
+  owner acceptance of R-5/R-8/R-10. Post-MVP library/certificates/transcription/analytics deferred.
+- GitHub push authorized on 2026-10-28. Remote CI results must be checked on the resulting commit;
+  historical run 40461034831 is not evidence for this artifact.

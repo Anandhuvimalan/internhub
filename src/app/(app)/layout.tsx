@@ -42,15 +42,7 @@ async function AppShell({ children }: { children: React.ReactNode }) {
   const isMentor = u.roles.includes("MENTOR");
   const isStudent = u.roles.includes("STUDENT");
 
-  return (
-    <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-surface px-3 py-5 md:flex">
-        <Link href="/" className="mb-6 flex items-center gap-2 px-3">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-accent text-sm font-bold text-accent-ink">IH</span>
-          <span className="font-semibold tracking-tight">InternHub</span>
-        </Link>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto">
-          {u.isStaff && (
+  const navigation = <>          {u.isStaff && (
             <>
               <div className="eyebrow px-3 pb-1 pt-2">Organization</div>
               <NavLink href="/admin">Overview</NavLink>
@@ -59,6 +51,8 @@ async function AppShell({ children }: { children: React.ReactNode }) {
               <NavLink href="/admin/internships">Internships</NavLink>
               <NavLink href="/admin/teams">Teams</NavLink>
               <NavLink href="/admin/projects">Projects</NavLink>
+              <NavLink href="/admin/templates">Templates</NavLink>
+              {u.can("settings:manage") && <><NavLink href="/admin/staff">Staff</NavLink><NavLink href="/admin/operations">Operations</NavLink></>}
             </>
           )}
           {isMentor && <NavLink href="/mentor">My Teams</NavLink>}
@@ -73,6 +67,18 @@ async function AppShell({ children }: { children: React.ReactNode }) {
           {u.can("reviews:perform") && <NavLink href="/reviews" badge={pendingReviews}>Review Queue</NavLink>}
           <NavLink href="/meetings" badge={meetingRequests}>Meetings</NavLink>
           <NavLink href="/notifications" badge={unread}>Notifications</NavLink>
+          <NavLink href="/settings/security">Account security</NavLink></>;
+
+  return (
+    <div className="flex min-h-screen">
+      <a href="#main-content" className="skip-link">Skip to content</a>
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-surface px-3 py-5 md:flex">
+        <Link href="/" className="mb-6 flex items-center gap-2 px-3">
+          <span className="grid h-7 w-7 place-items-center rounded-md bg-accent text-sm font-bold text-accent-ink">IH</span>
+          <span className="font-semibold tracking-tight">InternHub</span>
+        </Link>
+        <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto">
+          {navigation}
         </nav>
         <div className="mt-4 border-t border-line px-2 pt-4">
           <div className="flex items-center gap-2">
@@ -92,13 +98,14 @@ async function AppShell({ children }: { children: React.ReactNode }) {
         {/* compact top bar on phones */}
         <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-3 md:hidden">
           <span className="font-semibold">InternHub</span>
-          <nav className="flex gap-3 text-sm">
-            <Link href={u.isStaff ? "/admin" : isMentor ? "/mentor" : "/workspace"}>Home</Link>
-            <Link href="/meetings">Meetings</Link>
-            <Link href="/notifications">Inbox{unread ? ` (${unread})` : ""}</Link>
-          </nav>
+          <details className="relative">
+            <summary className="cursor-pointer rounded px-3 py-2">Menu</summary>
+            <nav aria-label="Mobile navigation" className="absolute right-0 top-full z-20 max-h-[75dvh] w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg">{navigation}
+              <form action={logoutAction}><button className="btn-ghost mt-3 w-full">Sign out</button></form>
+            </nav>
+          </details>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:px-8">
+        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:px-8">
           <Suspense fallback={<div className="h-7 w-64 animate-pulse rounded bg-line/60" />}>{children}</Suspense>
         </main>
       </div>

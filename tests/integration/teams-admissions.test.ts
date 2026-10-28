@@ -117,7 +117,7 @@ describe("lead → admission → activation (FR-1, FR-2)", () => {
     const { res, token } = await admitted();
     const u = await db.user.findUniqueOrThrow({ where: { id: res.user.id } });
     expect(u.activationTokenHash).toBe(hashToken(token));
-    expect(JSON.stringify(u)).not.toContain(token);
+    expect(JSON.stringify(u, (_, value) => typeof value === "bigint" ? value.toString() : value)).not.toContain(token);
     expect(u.activationExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 6 * 86_400_000);
   });
 

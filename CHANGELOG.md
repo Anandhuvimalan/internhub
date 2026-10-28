@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Cloud completion preparation (2026-10-27)
+- Preserved the local handoff; added non-destructive first-admin bootstrap, staff access management and structured project-template authoring.
+- Added mandatory admin TOTP enrollment/login, encrypted secrets, single-use recovery and session replay protection.
+- Added persisted upload grants, metadata verification, outbox malware scans and ETag-bound, scan-gated downloads.
+- Completed automated accessibility fixes/checks, mobile role navigation and backup/load/release tooling.
+- See docs/features/cloud-completion.md for actual local verification and external release gates; nothing published.
+
 ### S2 — Delivery (2026-10-27)
 - One-command setup with Docker Compose (database, cache, migrations, app, background worker).
 - Every push now runs lint, type checks, 65 tests, a production build, HTTP and browser
@@ -30,3 +37,14 @@
   1–4 month internships; balanced team allocation; project templates, phases and tasks;
   versioned submissions and reviewer queue; meetings, presentation scoring and approvals;
   notifications and reminders; student performance page; `/api/v1` REST API; demo data.
+
+### Completion continuation (2026-10-27)
+- Current-password rotation/all-session revocation and confirmed replacement authenticator flow.
+- Settings-gated failed-job retry, historical-file verification and bounded operations probe.
+- Independent ZIP/OpenXML expansion bounds, encrypted/nested archive rejection and per-scan signature freshness.
+- Correct retry for missing production SMTP, explicit SMTP deadlines and provider error redaction.
+- Hydration-safe file selection and submission lock while upload is in progress.
+- Pinned disposable provider services, real HTTP/worker/browser verification runner and CI job.
+- Realistic authenticated load fixture/scenarios and encrypted DB/object/runtime-key restore rehearsal.
+- Deployment remains separate; see cloud-completion.md for actual local evidence and external gates.
+- Scoped Prisma config dependency override to patched deepmerge-ts8.0.0 for GHSA-ggr8-5vv4-36mx; production dependency audit zero advisories after fix.

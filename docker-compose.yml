@@ -10,12 +10,17 @@
 x-runtime-env: &runtime-env
   DATABASE_URL: postgresql://internhub:internhub@postgres:5432/internhub?schema=internship
   REDIS_URL: redis://redis:6379
+  MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?set a random 32-byte hexadecimal MFA encryption key}
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: 3310
+  CLAMAV_MAX_SIGNATURE_AGE_DAYS: ${CLAMAV_MAX_SIGNATURE_AGE_DAYS:-7}
   SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env (at least 32 characters)}
   APP_URL: ${APP_URL:-http://localhost:3000}
   TRUSTED_IP_HEADER: ${TRUSTED_IP_HEADER:-x-real-ip}
   SMTP_URL: ${SMTP_URL:-}
   EMAIL_FROM: ${EMAIL_FROM:-InternHub <no-reply@example.com>}
   S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_REGION: ${S3_REGION:-auto}
   S3_BUCKET: ${S3_BUCKET:-}
   S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
   S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
@@ -48,6 +53,21 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 20
+
+  # Scanner stays on the private compose network; no host port or public upload access.
+  # Pin this image to a reviewed digest before a production release.
+  clamav:
+    image: clamav/clamav:1.4@sha256:982e28f90061d0e66eb03276419f589a47c9fa601e985e472fc2f6c64b497ca0
+    volumes:
+      - clamav-db:/var/lib/clamav
+      - ./ops/clamd.conf:/etc/clamav/clamd.conf:ro
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping=1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    restart: unless-stopped
 
   migrate:
     build: { <<: *build, target: migrate }
@@ -87,4 +107,5 @@ services:
     profiles: [tools]
 
 volumes:
+  clamav-db:
   pgdata:

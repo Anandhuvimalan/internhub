@@ -54,7 +54,8 @@ describe("session revocation (ADR-0003)", () => {
 
   it("role removal takes effect on the next request", async () => {
     const u = await makeUser(["ADMIN"]);
-    const t = await signSessionToken(u.id, 0);
+    await db.user.update({ where: { id: u.id }, data: { mfaSecret: "test-enrolled" } });
+    const t = await signSessionToken(u.id, 0, true);
     expect((await resolveSessionToken(t))?.isStaff).toBe(true);
     await db.roleAssignment.deleteMany({ where: { userId: u.id } });
     expect((await resolveSessionToken(t))?.isStaff).toBe(false);

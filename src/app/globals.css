@@ -8,7 +8,7 @@
   --line: #e4e1da;
   --ink: #1c1b19;
   --ink-2: #4a4741;
-  --muted: #77736b;
+  --muted: #68645c;
   --accent: #0f5f4f;
   --accent-ink: #ffffff;
   --accent-soft: #e3efeb;
@@ -30,7 +30,7 @@
     --line: #2f2d29;
     --ink: #ecebe7;
     --ink-2: #c4c1b9;
-    --muted: #8e8a81;
+    --muted: #a6a198;
     --accent: #4fb39b;
     --accent-ink: #0d1a17;
     --accent-soft: #16302a;
@@ -112,4 +112,12 @@ body {
   .tab-active {
     @apply border-accent font-medium text-ink;
   }
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+button, summary, .btn-primary, .btn-ghost, .btn-danger { min-height: 44px; }
+.skip-link { position: fixed; left: 1rem; top: -6rem; z-index: 50; padding: .75rem; background: var(--surface); color: var(--accent); }
+.skip-link:focus { top: 1rem; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

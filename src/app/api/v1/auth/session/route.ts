@@ -1,3 +1,5 @@
+import { beginLogin } from "@/server/mfa";
+import { setLoginChallenge } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { clientIp, handler } from "@/lib/api";
@@ -13,6 +15,8 @@ export const POST = handler(async (req: Request) => {
   await checkRateLimit("loginIp", `ip:${clientIp(req)}`);
   const userId = await checkCredentials(email, password);
   if (!userId) throw new AppError(401, "Email or password is incorrect", "invalid_credentials");
+  const challenge = await beginLogin(userId);
+  if (challenge) { await setLoginChallenge(challenge); return NextResponse.json({ mfaRequired: true, next: "/login/mfa" }, { status: 202 }); }
   await createSession(userId);
   return NextResponse.json({ ok: true, userId });
 });

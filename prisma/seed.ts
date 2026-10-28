@@ -17,6 +17,8 @@ const LAST = ["Nair", "Menon", "Pillai", "Kurian", "Thomas", "Varma", "Joseph", 
 const SKILLS = ["SQL", "Python", "Power BI", "Excel", "React", "Node.js"];
 
 async function main() {
+  const target = new URL(process.env.DATABASE_URL ?? "");
+  if (!["127.0.0.1", "localhost", "[::1]", "postgres"].includes(target.hostname)) throw new Error("Demo seed refuses remote databases; use isolated local services only");
   console.log("Resetting internship schema…");
   await db.$executeRawUnsafe(`
     DO $$ DECLARE r record; BEGIN

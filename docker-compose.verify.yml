@@ -1,0 +1,28 @@
+# Disposable verification only. Existing PostgreSQL/Redis stay separate; no production volumes.
+services:
+  storage:
+    image: rustfs/rustfs@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID:?generate isolated verification settings}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:?generate isolated verification settings}
+      RUSTFS_CONSOLE_ENABLE: "false"
+    command: ["/data"]
+    ports: ["127.0.0.1:59000:9000"]
+  mail:
+    image: axllent/mailpit@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
+    ports: ["127.0.0.1:51025:1025", "127.0.0.1:58025:8025"]
+  scanner:
+    container_name: internhub-test-verify-scanner
+    image: clamav/clamav:1.4@sha256:982e28f90061d0e66eb03276419f589a47c9fa601e985e472fc2f6c64b497ca0
+    environment:
+      # Offline mode is for this Cloud rehearsal using the image's current signed database.
+      # Default allows signature updates; never disable updates for a production scanner.
+      CLAMAV_NO_FRESHCLAMD: ${VERIFY_OFFLINE_SCANNER:-false}
+    volumes: ["./ops/clamd.conf:/etc/clamav/clamd.conf:ro"]
+    ports: ["127.0.0.1:53310:3310"]
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping=1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s

@@ -71,7 +71,7 @@ export function errorResponse(e: unknown) {
   if (known instanceof ZodError) {
     return NextResponse.json({ error: { code: "validation", message: "Invalid input", issues: known.issues } }, { status: 422 });
   }
-  console.error("[api] unhandled error", e);
+  console.error("[api] unhandled error", e instanceof Error ? e.name : "unknown");
   return NextResponse.json({ error: { code: "internal", message: "Something went wrong" } }, { status: 500 });
 }
 
@@ -94,6 +94,6 @@ export function actionError(e: unknown): ActionState {
   const known = toAppError(e);
   if (known instanceof AppError) return { error: known.message };
   if (known instanceof ZodError) return { error: known.issues.map((i) => i.message).join("; ") };
-  console.error("[action] unhandled error", e);
+  console.error("[action] unhandled error", e instanceof Error ? e.name : "unknown");
   return { error: "Something went wrong" };
 }

@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { ActionForm, SubmitButton } from "./forms";
 import { submitTaskAction } from "@/app/actions";
+
+const subscribe = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
 
 type FileRef = { storageKey: string; fileName: string; sizeBytes: number; mimeType: string };
 
@@ -11,12 +15,14 @@ type FileRef = { storageKey: string; fileName: string; sizeBytes: number; mimeTy
  * /api/v1/tasks/:id/uploads; only the resulting key is sent with the form.
  */
 export function SubmissionForm({ taskId, storageEnabled, resubmission }: { taskId: string; storageEnabled: boolean; resubmission: boolean }) {
+  const ready = useSyncExternalStore(subscribe, clientReady, serverReady);
   const [files, setFiles] = useState<FileRef[]>([]);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function onPick(list: FileList | null) {
     if (!list) return;
+    if (files.length + list.length > 10) { setErr("Attach at most 10 files"); return; }
     setErr(null);
     setUploading(true);
     try {
@@ -53,20 +59,21 @@ export function SubmissionForm({ taskId, storageEnabled, resubmission }: { taskI
       </label>
       {storageEnabled && (
         <div>
-          <span className="label">Files (max 50 MB each)</span>
-          <input type="file" multiple onChange={(e) => onPick(e.target.files)} className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm" />
+          <label htmlFor="submission-files" className="label">Files (max 50 MB each; downloads wait for malware scanning)</label>
+          <input id="submission-files" type="file" multiple disabled={!ready || uploading} onChange={(e) => onPick(e.target.files)} className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm" />
+          <noscript><p>File uploads require JavaScript. You can still submit a link.</p></noscript>
           {uploading && <p className="mt-1 text-xs text-muted">Uploading…</p>}
           {files.map((f) => (
             <p key={f.storageKey} className="mt-1 text-xs text-ok">✓ {f.fileName}</p>
           ))}
-          {err && <p className="mt-1 text-xs text-danger">{err}</p>}
+          {err && <p role="alert" className="mt-1 text-xs text-danger">{err}</p>}
         </div>
       )}
       <label className="block">
         <span className="label">{resubmission ? "What did you change?" : "Notes for the reviewer"}</span>
         <textarea name="note" rows={3} className="input" />
       </label>
-      <SubmitButton pendingLabel="Submitting…">{resubmission ? "Resubmit for review" : "Submit for review"}</SubmitButton>
+      <SubmitButton disabled={uploading} pendingLabel="Submitting…">{resubmission ? "Resubmit for review" : "Submit for review"}</SubmitButton>
     </ActionForm>
   );
 }

@@ -36,8 +36,9 @@ Close S0 gap findings (Book 7 gap assessment); add first automated tests; first 
 | Browser E2E `scripts/ui-e2e.py` | **verified** 40/40, 0 console errors | Chromium 153; 1280×860 and 390×844; 22 screens swept |
 | Contrast / screen reader audit | **not run** | Tokens chosen for contrast but not measured; needs axe/Lighthouse pass |
 | Load / capacity (NFR-1/2) | **not run** | Needs staging + k6 (S3) |
-| File upload to real R2 | **not run** | No storage credentials; presign code path untested against provider (R-7) |
-| Mux playback token | **not run** | No Mux keys |
+| File upload to real R2 | **not run** | 2026-10-27: private bucket and scoped credentials configured; authenticated ListObjectsV2 verified through Edge. Application upload/download flow remains untested (R-7). |
+| Mux playback token | **not run** | 2026-10-27: signing keys configured and local RS256 signing/verification passed. Application token endpoint and video playback remain untested. |
+| Supabase connection | **verified — user-run** | 2026-10-27: user reported `PASS: Database authentication, TLS, and read-only SELECT 1.` from `python scripts/check-database.py` in a network-enabled terminal. Application migrations and schema validation **not run**. |
 | SMTP delivery | **not run** | Worker verified in console-mail mode only |
 
 ## Known Issues

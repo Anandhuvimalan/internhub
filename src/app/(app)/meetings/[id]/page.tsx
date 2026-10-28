@@ -195,13 +195,13 @@ export default async function MeetingPage(props: PageProps<"/meetings/[id]">) {
                       <span className="label">Follow-up tasks (added to the project)</span>
                       {[0, 1, 2].map((i) => (
                         <div key={i} className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1fr]">
-                          <input name="fuTitle" className="input" placeholder={`Action item ${i + 1}`} />
-                          <select name="fuOwner" className="input">
+                          <input aria-label={`Follow-up task ${i + 1} title`} name="fuTitle" className="input" placeholder={`Action item ${i + 1}`} />
+                          <select aria-label={`Follow-up task ${i + 1} owner`} name="fuOwner" className="input">
                             {m.team?.members.map((x) => (
                               <option key={x.userId} value={x.userId}>{x.user.name}</option>
                             ))}
                           </select>
-                          <input name="fuDue" type="date" className="input" />
+                          <input aria-label={`Follow-up task ${i + 1} due date`} name="fuDue" type="date" className="input" />
                         </div>
                       ))}
                     </div>
@@ -302,7 +302,7 @@ export default async function MeetingPage(props: PageProps<"/meetings/[id]">) {
             <Card title="Reschedule or cancel">
               <ActionForm action={rescheduleAction}>
                 <input type="hidden" name="meetingId" value={m.id} />
-                <input name="startsAt" type="datetime-local" required className="input" defaultValue={toLocalInput(m.startsAt)} />
+                <Field label="New meeting time (IST)"><input name="startsAt" type="datetime-local" required className="input" defaultValue={toLocalInput(m.startsAt)} /></Field>
                 <SubmitButton variant="ghost">Reschedule</SubmitButton>
               </ActionForm>
               <form action={cancelMeetingAction} className="mt-3">

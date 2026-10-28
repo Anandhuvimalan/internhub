@@ -44,3 +44,7 @@ next-env.d.ts
 # browser e2e screenshots
 e2e-shots/
 dump.rdb
+
+# Synthetic verification credentials, signed sessions and encrypted recovery artifacts
+.local-verification/
+.local-load/

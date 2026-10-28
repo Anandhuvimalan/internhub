@@ -1,11 +1,12 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { httpUrl } from "@/lib/validation";
 import { db, type Tx } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { activity, audit, enqueue, notify } from "@/lib/events";
 import { badRequest, conflict, forbidden, notFound } from "@/lib/errors";
-import { presignUpload, validateUpload } from "@/lib/storage";
+import { presignUpload, validateUpload, objectMetadata } from "@/lib/storage";
 import { assertTaskAccess } from "../access";
 
 export const REVIEW_SLA_HOURS = Number(process.env.REVIEW_SLA_HOURS ?? 48);
@@ -43,8 +44,10 @@ export async function authorizeUpload(u: CurrentUser, taskId: string, raw: unkno
   const { fileName, mimeType, sizeBytes } = fileRef.omit({ storageKey: true }).parse(raw);
   await canSubmit(u, taskId);
   validateUpload(fileName, mimeType, sizeBytes);
-  const key = `submissions/${taskId}/${u.id}/${Date.now()}-${fileName.replace(/\s+/g, "_")}`;
-  return { storageKey: key, uploadUrl: await presignUpload(key, mimeType, sizeBytes), expiresIn: 300 };
+  const key = `submissions/${taskId}/${u.id}/${randomUUID()}-${fileName.replace(/\s+/g, "_")}`;
+  const uploadUrl = await presignUpload(key, mimeType, sizeBytes);
+  await db.uploadAuthorization.create({ data: { storageKey: key, userId: u.id, taskId, fileName, mimeType, sizeBytes, expiresAt: new Date(Date.now() + 15 * 60000) } });
+  return { storageKey: key, uploadUrl, expiresIn: 300 };
 }
 
 /** Least-loaded reviewer who is not on the team (queue balancing). */
@@ -64,12 +67,22 @@ async function pickReviewer(tx: Tx, teamId: string) {
 export async function submitTask(u: CurrentUser, taskId: string, raw: unknown) {
   const input = submissionInput.parse(raw);
   const task = await canSubmit(u, taskId);
+  const verified: (z.infer<typeof fileRef> & { uploadId: string; verifiedEtag: string })[] = [];
   for (const f of input.files) {
     if (!f.storageKey.startsWith(`submissions/${taskId}/${u.id}/`)) throw badRequest("File was not authorized for this task");
     validateUpload(f.fileName, f.mimeType, f.sizeBytes);
+    const grant = await db.uploadAuthorization.findUnique({ where: { storageKey: f.storageKey } });
+    if (!grant || grant.consumed || grant.userId !== u.id || grant.taskId !== taskId || grant.expiresAt < new Date() || grant.fileName !== f.fileName || grant.sizeBytes !== f.sizeBytes || grant.mimeType !== f.mimeType) throw badRequest("File authorization is invalid or expired");
+    const meta = await objectMetadata(f.storageKey);
+    if (meta.sizeBytes !== grant.sizeBytes || meta.mimeType !== grant.mimeType) throw badRequest("Uploaded object does not match its authorization");
+    verified.push({ ...f, uploadId: grant.id, verifiedEtag: meta.etag });
   }
 
   return db.$transaction(async (tx) => {
+    for (const file of verified) {
+      const claimed = await tx.uploadAuthorization.updateMany({ where: { id: file.uploadId, consumed: false, expiresAt: { gt: new Date() } }, data: { consumed: true } });
+      if (!claimed.count) throw conflict("File authorization already used or expired");
+    }
     const last = await tx.submission.findFirst({ where: { taskId }, orderBy: { version: "desc" }, select: { version: true } });
     const version = (last?.version ?? 0) + 1;
     const submission = await tx.submission.create({
@@ -80,9 +93,11 @@ export async function submitTask(u: CurrentUser, taskId: string, raw: unknown) {
         note: input.note || null,
         githubUrl: input.githubUrl || null,
         linkUrl: input.linkUrl || null,
-        files: { create: input.files },
+        files: { create: verified },
       },
     });
+    const storedFiles = await tx.submissionFile.findMany({ where: { submissionId: submission.id } });
+    for (const file of storedFiles) await enqueue(tx, "upload.scan", { fileId: file.id }, `upload_scan:${file.id}`);
     let reviewerId = task.reviewerId ?? task.project.team.mentorId ?? (await pickReviewer(tx, task.project.teamId));
     if (reviewerId === u.id) reviewerId = await pickReviewer(tx, task.project.teamId);
     // Conditional transition: a concurrent submit (double click, two teammates on a team task)

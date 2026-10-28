@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { cloneElement, isValidElement, type ReactNode } from "react";
 import { titleCase } from "@/lib/format";
 
 export function PageHeader({ eyebrow, title, subtitle, actions }: { eyebrow?: ReactNode; title: string; subtitle?: ReactNode; actions?: ReactNode }) {
@@ -115,7 +115,7 @@ export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
     <span
       title={name}
       className="inline-flex shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white ring-2 ring-surface"
-      style={{ width: size, height: size, background: `hsl(${h} 35% 42%)` }}
+      style={{ width: size, height: size, background: `hsl(${h} 35% 28%)` }}
     >
       {initials}
     </span>
@@ -145,7 +145,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   return (
     <label className="block">
       <span className="label">{label}</span>
-      {children}
+      {isValidElement<{ "aria-label"?: string }>(children) && ["input", "select", "textarea"].includes(String(children.type)) ? cloneElement(children, { "aria-label": label }) : children}
       {hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
     </label>
   );

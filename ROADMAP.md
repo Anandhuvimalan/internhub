@@ -10,10 +10,10 @@ Submission → Review → Completion) and v3 §13's phases.
 | S0 | Adopt build-web-app workflow: docs baseline | M1 | Done |
 | S1 | Security & concurrency hardening + tests + end-to-end verification | S0 | Done |
 | S2 | Delivery: Docker, CI, README | S1 | Done (Docker verified in CI) |
-| S3 | Staging + load test against PRD NFR-1/2 (k6), fix measured hotspots | S2, staging infra | Planned — needs staging environment |
-| S4 | Admin MFA (R-2) | S1 | Planned |
-| S5 | Upload verification + malware scanning (R-7) | storage credentials | Planned |
-| S6 | Backup/restore drill + runbook (R-4), release checklist | deployment target | Planned |
+| S3 | Staging + load test against PRD NFR-1/2 (k6), fix measured hotspots | S2, staging infra | Local authenticated synthetic steady/burst/session probes verified; sustained staging acceptance pending |
+| S4 | Admin MFA (R-2) | S1 | Implemented and locally verified; production key/recovery setup pending |
+| S5 | Upload verification + malware scanning (R-7) | storage + private ClamAV | Implemented; real isolated S3/SMTP/ClamAV/browser and scanner fault drills verified; live provider setup pending |
+| S6 | Backup/restore drill + runbook (R-4), release checklist | deployment target | Encrypted isolated DB/object/key restore + MFA/private download verified; deployment PITR/RTO/RPO pending |
 | S7 | Integration with existing student platform identity (NFR-9, R-6) | access to platform DB | Planned |
 | L1 | Video library / project showcase, certificates, transcription (post-MVP) | — | Later |
 
@@ -23,3 +23,7 @@ Submission → Review → Completion) and v3 §13's phases.
 - 2026-10-27 S1 — hardening, 65 tests (7/7 mutants caught), HTTP E2E 33/33, browser E2E 40/40. See docs/features/S1-hardening-and-verification.md.
 - 2026-10-27 S2 — Dockerfile/compose, CI (lint→types→tests→build→E2E, Docker build+boot), README, `npm start` fix. See docs/features/S2-delivery.md.
 - 2026-10-27 CI green on GitHub — run 40461034831: lint, types, 65 tests, build, HTTP+browser E2E, Docker build+boot.
+
+- 2026-10-27 Cloud completion — preserved/applied 14-file handoff at 4edc3d0; staff/template administration, admin MFA, persisted and scanned uploads, accessibility fixes and operational tooling implemented. Evidence and remaining gates: docs/features/cloud-completion.md. No production publication or live provider writes.
+
+- 2026-10-27 Completion continuation — account password/device recovery, operations UI/probe, independent archive bounds, per-scan definition freshness, SMTP retry correctness, reproducible provider/browser CI and encrypted full-system recovery added; actual evidence in cloud-completion.md.
